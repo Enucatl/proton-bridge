@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/go-proton-api"
@@ -87,13 +88,16 @@ func TestAutoDownloadScale_AllOkay(t *testing.T) {
 
 	const MaxParallel = 5
 
+	rateModifier := NewMockDownloadRateModifier(mockCtrl)
+	rateModifier.EXPECT().Apply(true, MaxParallel, MaxParallel).Return(MaxParallel).Times(3)
+
 	call1 := client.EXPECT().GetMessage(gomock.Any(), gomock.Any()).Times(5).DoAndReturn(autoDownloadScaleClientDoAndReturn)
 	call2 := client.EXPECT().GetMessage(gomock.Any(), gomock.Any()).Times(5).After(call1).DoAndReturn(autoDownloadScaleClientDoAndReturn)
 	client.EXPECT().GetMessage(gomock.Any(), gomock.Any()).Times(5).After(call2).DoAndReturn(autoDownloadScaleClientDoAndReturn)
 
 	msgs, err := autoDownloadRate(
 		context.Background(),
-		&DefaultDownloadRateModifier{},
+		rateModifier,
 		client,
 		MaxParallel,
 		data,
@@ -105,6 +109,22 @@ func TestAutoDownloadScale_AllOkay(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, xslices.Map(data, newDownloadScaleMessage), msgs)
+}
+
+func BenchmarkAutoDownloadRate(b *testing.B) {
+	data := buildDownloadScaleData(64)
+	for b.Loop() {
+		_, err := autoDownloadRate(
+			b.Context(), &DefaultDownloadRateModifier{}, APIClient(nil), 32, data, autoScaleCoolDown,
+			func(_ context.Context, _ APIClient, input string) (string, error) {
+				time.Sleep(5 * time.Millisecond) // Simulate request latency without a live account.
+				return input, nil
+			},
+		)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 func TestAutoDownloadScale_429or500x(t *testing.T) {

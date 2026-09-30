@@ -63,7 +63,7 @@ func NewDownloadStage(
 	return &DownloadStage{
 		input:                input,
 		output:               output,
-		maxParallelDownloads: maxParallelDownloads * 2,
+		maxParallelDownloads: maxParallelDownloads,
 		panicHandler:         panicHandler,
 		log:                  logrus.WithField("sync-stage", "download"),
 	}
@@ -255,8 +255,6 @@ func autoDownloadRate[T any, R any](
 			return nil, err
 		}
 
-		parallelTasks = modifier.Apply(atomic.LoadInt32(&proton429or5xxCounter) != 0, parallelTasks, maxParallelDownloads)
-
 		atomic.StoreInt32(&proton429or5xxCounter, 0)
 
 		chunkResult, err := parallel.MapContext(
@@ -278,6 +276,8 @@ func autoDownloadRate[T any, R any](
 		if err != nil {
 			return nil, err
 		}
+
+		parallelTasks = modifier.Apply(atomic.LoadInt32(&proton429or5xxCounter) == 0, parallelTasks, maxParallelDownloads)
 
 		result = append(result, chunkResult...)
 	}
