@@ -23,6 +23,9 @@ Agreed defaults:
 - IMAP and SMTP use implicit TLS. Clients must change their STARTTLS settings.
 - Docker clients and host loopback access; no LAN or public port publication.
 - Store the vault key inside `/data`, alongside encrypted state.
+- Explicit goal: run in the smallest practical shell-free image, ideally Google's
+  Distroless `static` nonroot image, with Docker `scratch` compatibility where
+  feasible. Prefer a statically linked release binary over runtime packages.
 
 ## Deliverables and repository ownership
 
@@ -125,6 +128,21 @@ use a certificate-covered hostname with suitable local DNS/network aliases.
 
 ### Runtime packaging
 
+Target `gcr.io/distroless/static-debian13:nonroot`, pinned by digest, by statically
+linking the existing CGO/SQLite dependency where feasible. Static linking does
+not require removing CGO. Also validate a Docker `scratch` image containing the
+binary and explicitly supplied CA roots and any required runtime data. Google's
+[Distroless images](https://github.com/GoogleContainerTools/distroless) and Docker's
+[empty scratch base](https://docs.docker.com/build/building/base-images/) are
+distinct options.
+
+Keep the established UID/GID and state ownership explicitly configured even
+when the base image provides a different nonroot default. Validate DNS, outbound
+TLS, SQLite, provisioning, healthcheck, and shutdown without a shell or package
+manager. If static linking fails these checks, document the concrete blocker and
+use the smallest compatible Distroless base with only verified required libraries.
+Do not silently fall back to a general-purpose distribution.
+
 Ship the binary, CA roots, and only its verified runtime libraries. Remove Bash,
 GPG/pass, socat, Secret Service/DBus, Qt, and FIDO2 packages. Keep the existing
 non-root identity, read-only root filesystem, dropped capabilities, and writable
@@ -148,7 +166,9 @@ overrides belong in reviewed module changes, not build-time `go get` commands.
   and an amd64 build plus runtime smoke test.
 - Verify the compiled dependency graph/linkage excludes the removed native
   backends and GUI. Exercise healthcheck, TLS listeners, and shutdown in the
-  intended runtime without requiring a live Proton account.
+  intended runtime without requiring a live Proton account. Check ELF linkage
+  and smoke-test the exact release binary in Distroless `static` and `scratch`
+  when statically linked; otherwise test the documented minimal fallback.
 - Upload the checked binary as a temporary workflow artifact for review.
 - A pushed `headless-v*` tag runs the same gates, builds the release archive,
   generates checksums/SBOM/provenance, and creates a draft GitHub Release.
@@ -193,6 +213,10 @@ Required acceptance scenarios:
   and snapshot restore/rollback.
 - Release workflow cannot publish when checks fail; archives/checksums and Docker
   consumption work; documented native libraries match actual runtime linkage.
+- Minimal-image compatibility: the release binary runs with a numeric nonroot
+  identity and read-only root filesystem in the selected Distroless image;
+  static/scratch claims require successful DNS, outbound TLS, SQLite, interactive
+  CLI, local TLS healthcheck, and shutdown checks in those images.
 - Replay the patch set across an upstream release boundary and record conflicts.
 
 ## Risks and maintenance policy
