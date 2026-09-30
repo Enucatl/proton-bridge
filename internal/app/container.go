@@ -68,6 +68,7 @@ func New() *cli.App {
 			&cli.BoolFlag{Name: "healthcheck", Usage: "Check both TLS protocol greetings"},
 			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "Print upstream and distribution versions"},
 			&cli.StringFlag{Name: "data-dir", Value: "/data", Usage: "Private persistent state directory"},
+			&cli.StringFlag{Name: "vault-key-file", Usage: "Existing 32-byte vault key secret (read-only; never generated or copied into state)"},
 			&cli.StringFlag{Name: "tls-cert", Value: "/protonmail/certs/cert.pem", Usage: "Mounted PEM certificate chain"},
 			&cli.StringFlag{Name: "tls-key", Value: "/protonmail/certs/key.pem", Usage: "Mounted PEM private key"},
 			&cli.StringFlag{Name: "tls-server-name", Usage: "Healthcheck certificate hostname (defaults to the first certificate SAN)"},
@@ -148,7 +149,12 @@ func runContainer(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	key, err := vault.LoadFileKey(filepath.Join(dataDir, "vault.key"), settings)
+	var key []byte
+	if c.IsSet("vault-key-file") {
+		key, err = vault.LoadSecretKey(c.String("vault-key-file"))
+	} else {
+		key, err = vault.LoadFileKey(filepath.Join(dataDir, "vault.key"), settings)
+	}
 	if err != nil {
 		return err
 	}

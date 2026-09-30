@@ -27,9 +27,29 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 const fileKeySize = 32
+
+// LoadSecretKey reads an operator-supplied key without creating or modifying it.
+// Group read bits also represent the mask for named read ACLs on remapped hosts.
+func LoadSecretKey(path string) ([]byte, error) {
+	// Reject symlinks and avoid blocking on special files; validate the opened inode.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open vault key secret: %w", err)
+	}
+	defer f.Close() //nolint:errcheck
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect vault key secret: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o137 != 0 || info.Mode().Perm()&0o400 == 0 {
+		return nil, errors.New("vault key secret must be a regular file with owner read access, optional group/ACL read access, and no executable, group-write or other permissions")
+	}
+	return readKeyBytes(f)
+}
 
 // LoadFileKey loads the private key or creates it only when no vault exists.
 // The application must hold its exclusive state lock before calling this.
@@ -106,12 +126,9 @@ func readFileKey(path string) ([]byte, error) {
 		return nil, fmt.Errorf("open vault key: %w", err)
 	}
 	defer f.Close() //nolint:errcheck
-	key, err := io.ReadAll(io.LimitReader(f, fileKeySize+1))
+	key, err := readKeyBytes(f)
 	if err != nil {
-		return nil, fmt.Errorf("read vault key: %w", err)
-	}
-	if len(key) != fileKeySize {
-		return nil, errors.New("vault key must contain exactly 32 bytes")
+		return nil, err
 	}
 	// Complete durability if initialization stopped after writing the key.
 	if err := f.Sync(); err != nil {
@@ -119,6 +136,17 @@ func readFileKey(path string) ([]byte, error) {
 	}
 	if err := syncKeyDirectory(dir); err != nil {
 		return nil, err
+	}
+	return key, nil
+}
+
+func readKeyBytes(reader io.Reader) ([]byte, error) {
+	key, err := io.ReadAll(io.LimitReader(reader, fileKeySize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read vault key: %w", err)
+	}
+	if len(key) != fileKeySize {
+		return nil, errors.New("vault key must contain exactly 32 bytes")
 	}
 	return key, nil
 }

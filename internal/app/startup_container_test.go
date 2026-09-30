@@ -96,6 +96,57 @@ func TestContainerStartupStateLockExclusion(t *testing.T) {
 	}
 }
 
+func TestContainerStartupUsesSecretWithoutLocalKeyFallback(t *testing.T) {
+	_, cert, key, _ := containerTestCertificate(t)
+	data := t.TempDir()
+	secret := filepath.Join(t.TempDir(), "vault_key")
+	originalKey := bytes.Repeat([]byte{1}, 32)
+	if err := os.WriteFile(secret, originalKey, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(secret, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"proton-bridge-headless", "--data-dir", data, "--tls-cert", cert, "--tls-key", key, "--vault-key-file", secret}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := New().RunContext(ctx, args); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "vault.key")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("secret was copied into state: %v", err)
+	}
+	loc := locations.New(containerProvider{root: data}, constants.ConfigName)
+	settings, err := loc.ProvideSettingsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	vaultPath := filepath.Join(settings, "vault.enc")
+	originalVault, err := os.ReadFile(vaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A valid local key must never mask a missing or incorrect explicit secret.
+	if err := os.WriteFile(filepath.Join(data, "vault.key"), originalKey, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, secretPath := range []string{filepath.Join(t.TempDir(), "missing"), "", secret} {
+		if secretPath == secret {
+			if err := os.WriteFile(secret, bytes.Repeat([]byte{2}, 32), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		args[len(args)-1] = secretPath
+		if err := New().RunContext(ctx, args); err == nil {
+			t.Fatal("invalid explicit secret unexpectedly used local key")
+		}
+		current, err := os.ReadFile(vaultPath)
+		if err != nil || !bytes.Equal(originalVault, current) {
+			t.Fatalf("invalid secret changed vault: %v", err)
+		}
+	}
+}
+
 func TestContainerDefaultAndExplicitCertificateSelection(t *testing.T) {
 	_, cert, key, _ := containerTestCertificate(t)
 	missingCert := filepath.Join(t.TempDir(), "missing-cert.pem")

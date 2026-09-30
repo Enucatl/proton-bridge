@@ -111,18 +111,26 @@ preceding steps pass. Local build commands create no tag or release.
 Execute the binary directly as PID 1:
 
 ```sh
-proton-bridge-headless --noninteractive
-proton-bridge-headless --cli
+proton-bridge-headless --noninteractive --vault-key-file /run/secrets/bridge_vault_key
+proton-bridge-headless --cli --vault-key-file /run/secrets/bridge_vault_key
 proton-bridge-headless --healthcheck --tls-server-name bridge.example.test
 ```
 
 State defaults to `/data` (`--data-dir`). Keep the directory private and writable
-by the explicitly chosen service UID/GID. The first initialization creates
-`/data/vault.key`: 32 random bytes, mode 0600. Keep it with the encrypted vault,
-database and cache. A lost or invalid key, damaged vault or decryption failure
-stops startup without resetting existing state. Never run concurrent instances
-against the same state. Losing the key loses access to the encrypted vault;
-backups contain this key and must be private.
+by the explicitly chosen service UID/GID. Container deployments supply an existing
+32-byte raw key using `--vault-key-file`, normally a read-only Compose secret at
+`/run/secrets/bridge_vault_key`. See [README.md](README.md#vault-key-secret) for
+generation and remapped-user ACLs. This path is read without changes or durability
+operations; missing, malformed, or unsafe secret files stop startup, even on fresh
+state. There is no fallback to `/data/vault.key` when this option is supplied.
+
+Without `--vault-key-file`, standalone operation retains `/data/vault.key`, generated
+only on fresh initialization with mode 0600 and a private 0700 parent. A lost or
+invalid key, damaged vault or decryption failure stops startup without resetting
+existing state. Never run concurrent instances against the same state. Losing the
+key loses access to the encrypted vault. With an external secret, back up the key
+separately from state and encrypt both backups independently. SQLite metadata and
+logs are plaintext; the vault and message-content files use application encryption.
 
 Certificates default to `/protonmail/certs/cert.pem` and
 `/protonmail/certs/key.pem` (`--tls-cert`, `--tls-key`). When both optional default
@@ -168,8 +176,10 @@ used 3.25.0 while its build declared 3.26.0. Record image size, native libraries
 idle memory, sync behavior and working clients before measuring savings.
 
 Stop the old service and snapshot **all** state. In the old environment export
-the existing decoded vault key directly into the new private `vault.key`, without
-logging it; do not generate a replacement key for an existing vault. Preserve
+the existing decoded vault key without logging it; do not generate a replacement
+key for an existing vault. Store it outside the state volume as the container
+secret. For an existing headless installation, use its current `/data/vault.key`.
+Preserve
 vault, database, cache, local credentials and IMAP IDs. Never run the old/new
 services together against the same state or use cloned authentication sessions.
 Update client ports/TLS settings and start the replacement. Keep the old image
@@ -199,6 +209,12 @@ The exclusive hard link refuses to replace an existing key. No key bytes are
 printed. Verify the entry in the actual old environment before migration; a
 different deployed wrapper may store its key elsewhere. Preserve the existing
 `/data/config/protonmail/bridge-v3` state layout and service ownership.
+
+The script above exports an intermediate `/data/vault.key` inside the old image.
+Copy that same key into the Docker project's `secrets/vault_key`, apply its remapped
+read ACL, and configure `--vault-key-file` before starting the new image. After
+successful acceptance, remove the intermediate key from the state volume. Retained
+old snapshots still contain unlocking material and require encrypted storage.
 
 Before publishing a release, test with a live account and real clients:
 

@@ -16,12 +16,20 @@ We simplify the runtime by:
 - Excluding GUI, gRPC desktop IPC, desktop integrations, OS keychains, and FIDO2
   dependencies from the headless build. Password/TOTP login remains available;
   accounts requiring only hardware security keys need upstream Bridge.
-- Replacing the `pass`/GPG/keychain stack with a private `0600` vault key file.
-  The vault and mail cache remain encrypted; backups containing the key must
-  stay private.
+- Replacing the `pass`/GPG/keychain stack with a vault key supplied as a read-only
+  container secret, outside the mail state volume. The vault and message-content
+  files use encryption; SQLite metadata and logs are plaintext. Encrypt state
+  storage and backups as well. A local `0600` key file remains available for
+  standalone operation.
 - Disabling automatic updates and automatic telemetry, crash, and TLS diagnostic
   uploads. Operators deploy reviewed releases; explicit bug reports remain
   available.
+
+The separate secret trades keychain unlock policies for host filesystem permissions
+and container isolation. Keeping the key outside the mail state volume lets us
+back it up separately, but Compose file secrets are not encrypted storage and do
+not guarantee access only by Bridge. Anyone able to read both the key and the
+encrypted data can decrypt it; protect the host, secret, and backups accordingly.
 
 We harden the service by requiring TLS for mail connections,
 preventing concurrent access to the same state, and stopping
@@ -49,6 +57,53 @@ For build, operation, migration, and acceptance details, see
 acceptance requirements; successful TLS handshakes alone do not verify them.
 The sections below describe the upstream desktop application retained in this
 repository.
+
+## Vault key secret
+
+For **fresh state only**, create 32 random raw bytes in the Docker project's
+ignored secrets directory. Run on the Docker host from `/opt/docker/protonmail-bridge`:
+
+```sh
+mkdir -p -m 0700 secrets
+(umask 077; set -C; openssl rand 32 > secrets/vault_key)
+```
+
+`set -C` refuses to overwrite an existing file. For existing state, export or
+copy its existing vault key instead: generating a different key would make the
+vault unreadable. Keep a separately encrypted recovery copy of this key.
+
+Supply the file using Compose:
+
+```yaml
+services:
+  bridge:
+    command: ["--noninteractive", "--vault-key-file", "/run/secrets/bridge_vault_key"]
+    secrets:
+      - bridge_vault_key
+secrets:
+  bridge_vault_key:
+    file: ./secrets/vault_key
+```
+
+The file is mounted read-only. An explicitly supplied key must already exist
+and contain exactly 32 bytes; Bridge never generates it, changes its permissions,
+copies it into `/data`, or falls back to a local key on failure. Owner read access
+is required; group or named ACL read access is allowed, but executable bits,
+group write, and all other-user permissions are rejected. File-source Compose
+secrets retain host ownership and ACLs; setting Compose `uid`, `gid`, or `mode`
+does not fix host permissions.
+
+Our Puppet node configuration in `data/nodes/docker.home.arpa.yaml` grants host
+UID **101000** (remap base 100000 + container UID 1000) directory traversal and
+read access to `/opt/docker/protonmail-bridge/secrets/vault_key`. The named ACL
+reports mode `0640` because the group bits represent the ACL mask; the owning
+group has no access. Apply the normal Puppet configuration before starting the
+service. The headless test Compose file in the Docker repository uses this secret.
+
+Back up mail state and the key separately. Compose file secrets are host bind
+mounts, not encrypted storage. State-volume backups exclude this external key;
+whole-host backups can still contain both. Remove old key copies from the state
+volume after a successful migration; mounting a secret does not remove them.
 
 This repository holds the Proton Mail Bridge application.
 
@@ -138,5 +193,3 @@ There are now three types of system folders which Bridge recognises:
 | Update files           | data     | updates                    |
 | sentry cache           | data     | sentry_cache               |
 | Mac/Linux File Socket  | temp     | bridge{4_DIGITS}           |
-
-

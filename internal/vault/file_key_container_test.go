@@ -26,6 +26,7 @@ import (
 	"crypto/sha256"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/ProtonMail/gluon/async"
@@ -162,4 +163,51 @@ func TestFileKeyRejectsIncompleteInitializationAndUnsafeFiles(t *testing.T) {
 			require.Equal(t, key, after)
 		})
 	}
+}
+
+func TestSecretKeyReadOnlyAndValidation(t *testing.T) {
+	for _, mode := range []os.FileMode{0o400, 0o600, 0o440, 0o640, 0o644, 0o660, 0o700} {
+		t.Run(mode.String(), func(t *testing.T) {
+			dir := t.TempDir()
+			// Secret mount directories may be searchable by everyone.
+			require.NoError(t, os.Chmod(dir, 0o755))
+			path := filepath.Join(dir, "key")
+			want := bytes.Repeat([]byte{1}, fileKeySize)
+			require.NoError(t, os.WriteFile(path, want, 0o600))
+			require.NoError(t, os.Chmod(path, mode))
+			key, err := LoadSecretKey(path)
+			if mode == 0o400 || mode == 0o600 || mode == 0o440 || mode == 0o640 {
+				require.NoError(t, err)
+				require.Equal(t, want, key)
+			} else {
+				require.Error(t, err)
+			}
+			info, err := os.Stat(path)
+			require.NoError(t, err)
+			require.Equal(t, mode, info.Mode().Perm())
+		})
+	}
+	for _, size := range []int{0, 31, 33} {
+		path := filepath.Join(t.TempDir(), "key")
+		require.NoError(t, os.WriteFile(path, make([]byte, size), 0o400))
+		_, err := LoadSecretKey(path)
+		require.Error(t, err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "missing")
+	_, err := LoadSecretKey(path)
+	require.Error(t, err)
+	_, err = os.Stat(path)
+	require.True(t, os.IsNotExist(err))
+	require.NoError(t, os.WriteFile(path, make([]byte, fileKeySize), 0o400))
+	link := filepath.Join(dir, "link")
+	require.NoError(t, os.Symlink(path, link))
+	_, err = LoadSecretKey(link)
+	require.Error(t, err)
+	_, err = LoadSecretKey(dir)
+	require.Error(t, err)
+	fifo := filepath.Join(dir, "fifo")
+	require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+	_, err = LoadSecretKey(fifo)
+	require.Error(t, err)
 }
