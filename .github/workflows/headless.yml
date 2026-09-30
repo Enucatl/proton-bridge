@@ -1,115 +1,51 @@
-name: Headless Linux distribution
+name: Headless container CI
 on:
   pull_request:
   push:
     branches: [master]
-  workflow_dispatch:
-    inputs:
-      upstream_tag:
-        description: 'Existing upstream tag to publish under (leave empty for checks only)'
-        required: false
-        type: string
-        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: headless-${{ github.ref }}-${{ inputs.upstream_tag || 'check' }}
-  cancel-in-progress: ${{ inputs.upstream_tag == '' }}
+  group: headless-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
+    outputs:
+      upstream_version: ${{ steps.version.outputs.upstream_version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Select build version
-        shell: bash
-        env:
-          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
-        run: |
-          source ./scripts/headless/environment.sh
-          version="v${UPSTREAM_VERSION}-dev-${GITHUB_SHA:0:12}"
-          if [[ -n "$UPSTREAM_TAG" ]]; then
-            [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/master ]]
-            [[ "$UPSTREAM_TAG" == "v$UPSTREAM_VERSION" ]]
-            git merge-base --is-ancestor "refs/tags/$UPSTREAM_TAG" HEAD
-            version="$UPSTREAM_TAG"
-          fi
-          {
-            echo "HEADLESS_VERSION=$version"
-            echo "REVISION=$(git rev-parse HEAD)"
-            echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)"
-          } >> "$GITHUB_ENV"
-      - name: Scan source misconfigurations and secrets with Trivy
-        run: ./scripts/headless/security.sh source
-      - name: Format, vet, upstream engine unit/integration tests, race, vulnerabilities, static build
+      - name: Read upstream version
+        id: version
+        run: echo "upstream_version=$(sed -n 's/^BRIDGE_APP_VERSION?=\([0-9.]*\)+git$/\1/p' Makefile)" >> "$GITHUB_OUTPUT"
+      - name: Format, vet, unit/integration tests, race and reachable Go vulnerabilities
         run: ./scripts/headless/run.sh check
-      - name: Smoke-test exact binary in Distroless and scratch
+      - name: Smoke-test Debian nonroot runtime
         run: ./scripts/headless/smoke.sh
-      - name: Package exact tested binary, corresponding source and SBOM
-        run: ./scripts/headless/run.sh package
-      - name: Scan release binary and SBOM with Trivy
-        run: ./scripts/headless/security.sh artifacts "headless-dist/release/proton-bridge-headless-${HEADLESS_VERSION}.sbom.json"
-      - name: Upload security scan reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: security-headless-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            headless-dist/security/*.json
-            headless-dist/security/*.sarif
-            headless-dist/security/scanner-version.txt
-            headless-dist/security/scanned-binary.sha256
-          if-no-files-found: ignore
-          retention-days: 14
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: checked-headless-${{ github.sha }}
-          path: headless-dist/release/
-          if-no-files-found: error
-          retention-days: 14
 
-  release:
+  image:
     needs: check
-    if: github.event_name == 'workflow_dispatch' && inputs.upstream_tag != '' && github.ref == 'refs/heads/master' && github.repository == 'Enucatl/proton-bridge'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
+      packages: write
       id-token: write
-      attestations: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: checked-headless-${{ github.sha }}
-          path: release
-      - name: Verify downloaded checked artifacts
-        working-directory: release
-        run: sha256sum --strict -c SHA256SUMS
-      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
-        id: provenance
-        with:
-          subject-path: |
-            release/*.tar.gz
-            release/*.json
-            release/RELEASE_NOTES.md
-      - name: Include signed provenance and final checksums
-        env:
-          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
-        run: |
-          cp "$PROVENANCE_BUNDLE" release/provenance.sigstore.json
-          cd release
-          sha256sum ./*.tar.gz ./*.json RELEASE_NOTES.md > SHA256SUMS
-      - name: Create draft then publish after all gates
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.upstream_tag }}
-        run: |
-          gh release create "$RELEASE_TAG" release/* --verify-tag --draft --title "$RELEASE_TAG" --notes-file release/RELEASE_NOTES.md
-          gh release edit "$RELEASE_TAG" --draft=false
+      security-events: write
+    uses: Enucatl/docker-compose-security-baseline/.github/workflows/docker-ci.yml@main
+    with:
+      image_name: ghcr.io/enucatl/protonmail-bridge
+      version: v${{ needs.check.outputs.upstream_version }}
+      meta_tags: |
+        type=raw,value=v${{ needs.check.outputs.upstream_version }}
+      dockerfile: scripts/headless/Dockerfile.image
+      trivy_skip_dirs: .git,headless-dist
+      build_args: REVISION=${{ github.sha }}
+      cache: false
+      push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'Enucatl/proton-bridge' }}
+    secrets:
+      registry_token: ${{ secrets.GITHUB_TOKEN }}

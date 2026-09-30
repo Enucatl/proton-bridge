@@ -103,16 +103,14 @@ endif
 
 build: build-gui
 
-# Fork binary build/validation; runtime packaging belongs to the Docker repository.
-.PHONY: headless-build headless-check headless-smoke headless-package
+# Fork binary build and container validation.
+.PHONY: headless-build headless-check headless-smoke
 headless-build:
 	./scripts/headless/run.sh build
 headless-check:
 	./scripts/headless/run.sh check
 headless-smoke:
 	./scripts/headless/smoke.sh
-headless-package:
-	./scripts/headless/run.sh package
 
 build-gui: ${TGZ_TARGET}
 

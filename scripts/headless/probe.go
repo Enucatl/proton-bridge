@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Proton Mail Bridge.  If not, see <https://www.gnu.org/licenses/>.
 
-// Runtime validation fixture; excluded from release archives and production images.
+// Runtime validation fixture; excluded from production images.
 package main
 
 import (
@@ -56,14 +56,14 @@ func check() error {
 			return err
 		}
 		defer db.Close()
-		if _, err := db.Exec("CREATE TABLE probe (value TEXT); INSERT INTO probe VALUES ('static sqlite works')"); err != nil {
+		if _, err := db.Exec("CREATE TABLE probe (value TEXT); INSERT INTO probe VALUES ('sqlite works')"); err != nil {
 			return fmt.Errorf("SQLite: %w", err)
 		}
 		var value string
 		if err := db.QueryRow("SELECT value FROM probe").Scan(&value); err != nil {
 			return err
 		}
-		if value != "static sqlite works" {
+		if value != "sqlite works" {
 			return fmt.Errorf("SQLite roundtrip: %q", value)
 		}
 		return nil

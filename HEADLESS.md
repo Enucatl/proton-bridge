@@ -1,110 +1,69 @@
 # Proton Mail Bridge headless
 
-This fork distributes one Linux amd64 executable based on upstream `v3.27.1`.
-GitHub Releases on `Enucatl/proton-bridge` are the canonical binary/source
-distribution. The separate Docker repository packages pinned releases and owns
-Compose, image scans, publication, and deployment. The Dockerfiles here are
-build and validation fixtures.
+This fork publishes a Linux amd64 container based on upstream `v3.27.1` as
+`ghcr.io/enucatl/protonmail-bridge:v3.27.1`. Each successful push to `master`
+replaces that tag with the image built from that commit. The Docker Compose
+repository consumes the image; this repository owns its build, tests, and scans.
 
 ## Build and verify
 
-Docker, Bash, OpenSSL, Git, `strings` (binutils), and an amd64 host are required:
+Docker, Bash, OpenSSL, Git, and an amd64 host are required:
 
 ```sh
+docker build --platform linux/amd64 --build-arg REVISION="$(git rev-parse HEAD)" \
+    -f scripts/headless/Dockerfile.image -t protonmail-bridge-headless:local .
 make headless-check
 make headless-smoke
-make headless-package HEADLESS_VERSION=v3.27.1-dev
-./scripts/headless/security.sh source
-./scripts/headless/security.sh artifacts headless-dist/release/proton-bridge-headless-v3.27.1-dev.sbom.json
 ```
 
-`scripts/headless/environment.sh` pins Go 1.26.7 and the builder/runtime image
-digests. The builder pins compiler and tooling package versions; unavailable
-pins fail the build rather than selecting newer versions. Build with CGO and
-musl to retain the upstream SQLite implementation. Go's DNS/user lookup uses
-its native implementations and SQLite extension loading is disabled. The ELF
-gate rejects an interpreter or shared-library dependency. No runtime shared
-libraries are required by a passing artifact. This does not remove CGO.
+`scripts/headless/Dockerfile.image` pins the Go 1.26.7 Debian Trixie builder
+and Distroless `base-debian13:nonroot` runtime directly by version and digest.
+The builder runs `apt-get update` and `apt-get upgrade` to install available
+package fixes. CI disables the baseline's build cache so each run executes the
+upgrade; use `docker build --no-cache` locally to refresh those packages.
 
-The checks cover the compiled application graph, affected-package races, vet,
-formatting and reachable dependency vulnerabilities. Relevant upstream engine
-integration tests in `internal/bridge` exercise fake Proton APIs with real
-IMAP/SMTP sockets, SQLite and synchronization/send state. The desktop Godog/UI
-harness is preserved outside the container graph. Desktop source and upstream
-GitLab files remain for upgrades. Smoke tests run the exact release executable
-in pinned Distroless `static-debian13:nonroot` and `scratch`, with numeric UID/GID
-1000, read-only root, no capabilities, private writable state and temporary
-directories. The test-only probe validates DNS, outbound certificate verification,
-SQLite writes, and both local TLS protocol greetings over IPv4 and IPv6; it is excluded from release
-archives. Service checks cover CLI, healthcheck, exclusive state lock and SIGTERM.
-They also check self-signed startup without a certificate mount, unchanged
-certificate identity after restart, and rejection of explicitly invalid paths/PEM.
-Network-dependent checks need outbound DNS/HTTPS; failures block publication.
-These local bind-mount fixtures use the host user namespace to accommodate Docker
-daemons with UID remapping. They do not set deployment namespace policy.
+The reduced binary uses the `container,netgo,osusergo,sqlite_omit_load_extension`
+build tags. CGO retains upstream's embedded SQLite and links against Debian's
+libc, supplied by the runtime image. Desktop and test-only dependencies are
+rejected from the compiled application graph. Runtime UID/GID remains 1000,
+with private state in `/data`; the image contains no shell or build tools.
+Upstream version comes from the existing Makefile. The optional `REVISION`
+build argument records the source commit; CI supplies it automatically.
 
-The pipeline also uses a version/digest-pinned Trivy scanner with the security
-baseline's `HIGH,CRITICAL` policy: source misconfigurations and secrets, compiled
-binary vulnerabilities and secrets, and release SBOM vulnerabilities. Fixed
-vulnerabilities at that severity block publication; scanner errors also fail the
-job. JSON/SARIF reports are retained as workflow artifacts. `govulncheck` separately
-checks reachable Go vulnerabilities. Trivy identifies Go dependencies from the
-binary and SBOM; the static native components remain listed in the SBOM and need
-native-advisory review because this scan cannot identify them reliably. Deployment
-image scanning stays in the Docker repository.
+The project check job retains formatting, vet, upstream engine unit/integration
+tests, affected-package races, and reachable Go vulnerability checks. Smoke tests
+build the same Dockerfile's `smoke` target, which adds a test-only probe to the
+production runtime. They check DNS, outbound TLS, SQLite writes, IPv4/IPv6 local
+TLS greetings, CLI, healthcheck, exclusive state locking, SIGTERM, persistent
+self-signed certificates, and invalid custom certificate rejection. Containers
+run with a read-only root, no capabilities, and private writable state and
+`/tmp`. Local fixtures use the host user namespace for UID-remapped Docker
+compatibility. Network-dependent checks require outbound DNS/HTTPS.
 
-The tracked `.githooks/pre-push` hook runs the same source scan in Docker before
-a local push and blocks findings or scanner errors. It scans the current working
-tree; CI scans the checked-out revision and the built binary/SBOM. It is enabled
-in this checkout. To enable it in a fresh clone, run:
+[The security baseline](https://github.com/Enucatl/docker-compose-security-baseline/blob/main/.github/workflows/docker-ci.yml)
+owns image building, GHCR publishing, image SBOM generation, signing, source
+misconfiguration/secret scans, and image vulnerability/secret scans, with its
+existing `HIGH,CRITICAL` policy and reports. The only project-specific prerequisite
+is the application check/smoke job; there is no separate release archive or
+binary/SBOM scan pipeline. The baseline scans images after publication, so a
+failed image scan leaves the pushed tag available. It does not scan builder
+stages, and its image SBOM does not separately inventory embedded SQLite.
+
+Pull requests build and scan source without publishing. Successful pushes to
+`master` publish `ghcr.io/enucatl/protonmail-bridge:v3.27.1`; later pushes on the
+same upstream base replace that tag. Builds compile this fork's source directly.
+To upgrade, merge or rebase upstream, resolve conflicts, and rerun checks.
+
+The local `.githooks/pre-push` hook keeps the source misconfiguration/secret
+gate using Trivy pinned in `scripts/headless/Dockerfile.scanner`. Docker is
+required; findings and scanner errors block the push. Enable it in a new clone:
 
 ```sh
 git config --local core.hooksPath .githooks
 ```
 
-Docker must be available for the push check. The hook creates no commits or tags
-and does not change commit/tag signing.
-
-Local validation on 2026-09-30 passed both shell-free fixtures. The measured
-uncompressed executable was 25,686,768 bytes. The validation images measured
-35,589,270 bytes (Distroless) and 33,399,356 bytes (`scratch`), including the
-test-only probe; these are not production image sizes. The checked application
-graph had no reachable vulnerabilities reported by `govulncheck`. A deployed
-baseline and live Proton/client acceptance remain outstanding; no saving is
-claimed against the existing deployment.
-
-The changes live directly in this fork, and builds compile its source. To
-upgrade, merge or rebase a newer upstream release into the downstream branch,
-resolve conflicts, and rerun the build and acceptance gates.
-
-Build output lives in `headless-dist`. The workflow archives the binary it tested
-without rebuilding, includes dependency license/notice texts and an application
-SBOM including the statically linked musl/GCC runtime and embedded SQLite,
-and archives the exact committed fork source with `go.mod`/`go.sum`.
-For a source archive, set `REVISION`, `SOURCE_DATE_EPOCH`, and `HEADLESS_VERSION`
-from its build metadata before executing `build.sh` in the pinned builder;
-`build.sh` does not require Git when these values are supplied. `run.sh` mounts
-local source in the build environment. The full CI pipeline requires a checkout
-because corresponding source is generated with `git archive HEAD`.
-
-Releases reuse upstream tags such as `v3.27.1`, preserving their original Git
-targets. After live acceptance, run the **Headless Linux distribution** workflow
-on `master` with `upstream_tag=v3.27.1`, or use:
-
-```sh
-gh workflow run headless.yml --repo Enucatl/proton-bridge --ref master -f upstream_tag=v3.27.1
-```
-
-The workflow builds the fork commit on `master`, validates that the selected tag
-matches `UPSTREAM_VERSION` and is an ancestor of that commit, and publishes assets
-under that existing tag. GitHub's automatic source links refer to upstream;
-the attached `proton-bridge-headless-v3.27.1-source.tar.gz` and build metadata
-identify the actual fork source used for the executable. No upstream tag is moved.
-An empty `upstream_tag` runs checks without publishing. PR checks have read-only
-permissions and no release/account secrets. Failed gates prevent release creation.
-The release job downloads that run's checked artifact, verifies checksums,
-attaches signed GitHub build provenance, creates a draft, then publishes after all
-preceding steps pass. Local build commands create no tag or release.
+Local binary output from `make headless-build` lives in `headless-dist`.
+Live Proton account/client acceptance remains a separate deployment check.
 
 ## Operation
 
