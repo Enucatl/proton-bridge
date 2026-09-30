@@ -1,0 +1,62 @@
+name: Latest headless dependencies
+
+on:
+  schedule:
+    - cron: '22 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latest-deps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Resolve latest stable Go and fresh runtime image
+        shell: bash
+        run: |
+          docker pull --platform linux/amd64 golang:1-trixie
+          docker pull --platform linux/amd64 gcr.io/distroless/base-debian13:nonroot
+          go_version=$(docker run --rm --platform linux/amd64 golang:1-trixie go env GOVERSION)
+          builder_digest=$(docker image inspect golang:1-trixie --format '{{index .RepoDigests 0}}')
+          runtime=$(docker image inspect gcr.io/distroless/base-debian13:nonroot --format '{{index .RepoDigests 0}}')
+          builder="golang:${go_version#go}-trixie@${builder_digest##*@}"
+          sed -i \
+            -e "s|^FROM golang:.* AS builder$|FROM $builder AS builder|" \
+            -e "s|^FROM gcr.io/distroless/base-debian13:.* AS debian$|FROM gcr.io/distroless/base-debian13:nonroot@${runtime##*@} AS debian|" \
+            scripts/headless/Dockerfile.image
+      - name: Check dependency upgrade behavior
+        run: ./scripts/headless/latest-deps_test.sh
+      - name: Upgrade headless dependencies and Proton replacements
+        run: ./scripts/headless/run.sh latest-deps
+      - name: Format, vet, unit/integration tests, race and reachable Go vulnerabilities
+        run: ./scripts/headless/run.sh check
+      - name: Build candidate runtime image
+        run: |
+          docker build --platform linux/amd64 --target runtime \
+            --build-arg "REVISION=${{ github.sha }}" \
+            -f scripts/headless/Dockerfile.image -t proton-bridge-headless:compatibility .
+      - name: Smoke-test candidate runtime
+        run: ./scripts/headless/smoke.sh
+      - name: Save candidate updates, including failed attempts
+        if: always()
+        run: |
+          mkdir -p headless-dist/compatibility
+          git diff -- go.mod go.sum scripts/headless/Dockerfile.image > headless-dist/compatibility/updates.patch
+          cp go.mod go.sum scripts/headless/Dockerfile.image headless-dist/compatibility/
+      - name: Upload candidate updates
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: latest-deps-${{ github.run_id }}-${{ github.run_attempt }}
+          path: headless-dist/compatibility/
+          if-no-files-found: error
+          retention-days: 14

@@ -54,6 +54,20 @@ Pull requests build and scan source without publishing. Successful pushes to
 same upstream base replace that tag. Builds compile this fork's source directly.
 To upgrade, merge or rebase upstream, resolve conflicts, and rerun checks.
 
+The separate [latest-deps workflow](.github/workflows/latest-deps.yml) runs daily
+at 05:22 UTC and can be started manually. In its temporary checkout it resolves
+the latest stable Go Trixie builder and refreshed Debian 13 runtime to digests,
+upgrades dependencies of the headless binary and all packages tested by the
+headless check, and repins reachable Proton replacements to newer default branch
+heads, preserving pins whose commits are newer than the default branch. It runs
+the existing checks, builds a candidate image, and runs smoke tests without
+publishing. Each run saves `updates.patch` and the resulting
+`go.mod`, `go.sum`, and Dockerfile in a `latest-deps` artifact for 14 days,
+including failed attempts. Review and apply a passing patch with
+`git apply updates.patch` to adopt the tested pins. Go upgrades stay within
+existing module paths; migrations such as `/v2` to `/v3` still require explicit
+[import and API changes](https://go.dev/ref/mod#major-version-suffixes).
+
 The local `.githooks/pre-push` hook keeps the source misconfiguration/secret
 gate using Trivy pinned in `scripts/headless/Dockerfile.scanner`. Docker is
 required; findings and scanner errors block the push. Enable it in a new clone:
