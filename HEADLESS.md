@@ -1,7 +1,7 @@
 # Proton Mail Bridge headless
 
 This fork publishes a Linux amd64 container based on upstream `v3.27.1` as
-`ghcr.io/enucatl/protonmail-bridge:v3.27.1`. Each successful push to `master`
+`ghcr.io/enucatl/proton-bridge:v3.27.1`. Each successful push to `master`
 replaces that tag with the image built from that commit. The Docker Compose
 repository consumes the image; this repository owns its build, tests, and scans.
 
@@ -50,7 +50,7 @@ failed image scan leaves the pushed tag available. It does not scan builder
 stages, and its image SBOM does not separately inventory embedded SQLite.
 
 Pull requests build and scan source without publishing. Successful pushes to
-`master` publish `ghcr.io/enucatl/protonmail-bridge:v3.27.1`; later pushes on the
+`master` publish `ghcr.io/enucatl/proton-bridge:v3.27.1`; later pushes on the
 same upstream base replace that tag. Builds compile this fork's source directly.
 To upgrade, merge or rebase upstream, resolve conflicts, and rerun checks.
 

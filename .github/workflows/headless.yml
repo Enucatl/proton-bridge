@@ -38,7 +38,7 @@ jobs:
       security-events: write
     uses: Enucatl/docker-compose-security-baseline/.github/workflows/docker-ci.yml@main
     with:
-      image_name: ghcr.io/enucatl/protonmail-bridge
+      image_name: ghcr.io/enucatl/proton-bridge
       version: v${{ needs.check.outputs.upstream_version }}
       meta_tags: |
         type=raw,value=v${{ needs.check.outputs.upstream_version }}
