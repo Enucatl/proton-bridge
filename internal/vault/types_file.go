@@ -38,6 +38,10 @@ func unmarshalFile[T any](gcm cipher.AEAD, b []byte, data *T) error {
 		return fmt.Errorf("%w: %v", ErrUnmarshal, err)
 	}
 
+	if len(f.Data) < gcm.NonceSize()+gcm.Overhead() {
+		return fmt.Errorf("%w: truncated encrypted data", ErrDecryptFailed)
+	}
+
 	dec, err := gcm.Open(nil, f.Data[:gcm.NonceSize()], f.Data[gcm.NonceSize():], nil)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrDecryptFailed, err)

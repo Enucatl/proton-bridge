@@ -27,6 +27,7 @@ import (
 
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/go-proton-api"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/telemetry"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/utils"
@@ -270,6 +271,10 @@ func (s *Service) dispatchData() {
 // dispatchViaClient - return value tells us whether telemetry is enabled
 // such that we know whether to schedule another dispatch if more data is present.
 func (s *Service) dispatchViaClient(metricsToSend *[]proton.ObservabilityMetric) bool {
+	if constants.IsContainer {
+		return false
+	}
+
 	s.log.Info("Sending observability data.")
 	s.userClientStoreLock.Lock()
 	defer s.userClientStoreLock.Unlock()

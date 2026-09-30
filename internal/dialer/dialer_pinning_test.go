@@ -19,6 +19,13 @@ package dialer
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/base64"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -83,41 +90,62 @@ func TestTLSPinNoMatch(t *testing.T) {
 }
 
 func TestTLSSignedCertWrongPublicKey(t *testing.T) {
-	skipIfProxyIsSet(t)
-
-	_, dialer, _, _, _ := createClientWithPinningDialer("") //nolint:dogsled
-	_, err := dialer.DialTLSContext(context.Background(), "tcp", "rsa4096.badssl.com:443")
-	r.Error(t, err, "expected dial to fail because of wrong public key")
+	dialer, address := localPinningDialer(t, true, false)
+	_, err := dialer.DialTLSContext(context.Background(), "tcp", address)
+	r.ErrorIs(t, err, ErrTLSMismatch)
 }
 
-/*
-For the following test the SSL pin rotates from time to time. Thus, the pin needs to be updated accordingly.
-A new pin can be extracted by running the following command:
-
-		echo | openssl s_client -connect rsa4096.badssl.com:443 2>/dev/null | \
-	  	openssl x509 -pubkey -noout | \
-		openssl pkey -pubin -outform DER | \
-		openssl dgst -sha256 -binary | \
-		base64
-*/
 func TestTLSSignedCertTrustedPublicKey(t *testing.T) {
-	skipIfProxyIsSet(t)
-
-	_, dialer, _, checker, _ := createClientWithPinningDialer("")
-	copyTrustedPins(checker)
-	checker.trustedPins = append(checker.trustedPins, `pin-sha256="6ldn7wqGt9/ux7GDsd4gTtx8DcuW7xv/Ke3X9gDSjkc="`)
-	_, err := dialer.DialTLSContext(context.Background(), "tcp", "rsa4096.badssl.com:443")
-	r.NoError(t, err, "expected dial to succeed because public key is known and cert is signed by CA")
+	dialer, address := localPinningDialer(t, true, true)
+	conn, err := dialer.DialTLSContext(context.Background(), "tcp", address)
+	r.NoError(t, err)
+	defer conn.Close() //nolint:errcheck
+	r.NotEmpty(t, conn.(*tls.Conn).ConnectionState().VerifiedChains)
 }
 
 func TestTLSSelfSignedCertTrustedPublicKey(t *testing.T) {
-	skipIfProxyIsSet(t)
+	dialer, address := localPinningDialer(t, false, true)
+	conn, err := dialer.DialTLSContext(context.Background(), "tcp", address)
+	r.NoError(t, err)
+	defer conn.Close() //nolint:errcheck
+	r.Empty(t, conn.(*tls.Conn).ConnectionState().VerifiedChains)
+}
 
-	_, dialer, _, checker, _ := createClientWithPinningDialer("")
-	copyTrustedPins(checker)
-	checker.trustedPins = append(checker.trustedPins, `pin-sha256="9SLklscvzMYj8f+52lp5ze/hY0CFHyLSPQzSpYYIBm8="`)
-	_, err := dialer.DialTLSContext(context.Background(), "tcp", "self-signed.badssl.com:443")
-	r.NoError(t, err, "expected dial to succeed because public key is known despite cert being self-signed")
+func TestTLSSelfSignedCertWrongPublicKey(t *testing.T) {
+	dialer, address := localPinningDialer(t, false, false)
+	_, err := dialer.DialTLSContext(context.Background(), "tcp", address)
+	r.ErrorIs(t, err, ErrTLSMismatch)
+}
+
+type localTLSDialer struct{ *tls.Dialer }
+
+func (d localTLSDialer) DialTLSContext(ctx context.Context, network, address string) (net.Conn, error) {
+	return d.DialContext(ctx, network, address)
+}
+
+func (d localTLSDialer) ShouldSkipCertificateChainVerification(string) bool {
+	return d.Config.InsecureSkipVerify
+}
+
+func localPinningDialer(t *testing.T, verifyChain, trustPin bool) (*PinningTLSDialer, string) {
+	t.Helper()
+	s := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(func() {
+		s.CloseClientConnections()
+		s.Close()
+	})
+	config := s.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	config.InsecureSkipVerify = !verifyChain //nolint:gosec
+	if !verifyChain {
+		config.RootCAs = nil
+	}
+	pins := append([]string(nil), TrustedAPIPins...)
+	if trustPin {
+		hash := sha256.Sum256(s.Certificate().RawSubjectPublicKeyInfo)
+		pins = append(pins, fmt.Sprintf(`pin-sha256=%q`, base64.StdEncoding.EncodeToString(hash[:])))
+	}
+	dialer := NewPinningTLSDialer(localTLSDialer{&tls.Dialer{Config: config}}, nil, NewTLSPinChecker(pins))
+	return dialer, s.Listener.Addr().String()
 }
 
 func createClientWithPinningDialer(hostURL string) (*atomicUint64, *PinningTLSDialer, *TLSReporter, *TLSPinChecker, *proton.Manager) {

@@ -40,6 +40,10 @@ const hostNotDetectedField = "not-detected"
 var skippedFunctions = []string{} //nolint:gochecknoglobals
 
 func init() { //nolint:gochecknoinits
+	if constants.IsContainer {
+		return
+	}
+
 	sentrySyncTransport := sentry.NewHTTPSyncTransport()
 	sentrySyncTransport.Timeout = time.Second * 3
 	appVersion := constants.Version
@@ -208,7 +212,7 @@ func (r *Reporter) ReportWarningWithContext(msg string, context map[string]any) 
 func (r *Reporter) scopedReport(context map[string]any, doReport func(scope *sentry.Scope)) error {
 	SkipDuringUnwind()
 
-	if os.Getenv("PROTONMAIL_ENV") == "dev" {
+	if constants.IsContainer || os.Getenv("PROTONMAIL_ENV") == "dev" {
 		return nil
 	}
 
@@ -251,6 +255,9 @@ func ReportError(r reporter.Reporter, msg string, err error) {
 
 // SkipDuringUnwind removes caller from the traceback.
 func SkipDuringUnwind() {
+	if constants.IsContainer {
+		return
+	}
 	pcs := make([]uintptr, 2)
 	n := runtime.Callers(2, pcs)
 	if n == 0 {
@@ -295,6 +302,9 @@ func isFunctionFilteredOut(function string) bool {
 }
 
 func Flush(maxWaiTime time.Duration) {
+	if constants.IsContainer {
+		return
+	}
 	sentry.Flush(maxWaiTime)
 }
 

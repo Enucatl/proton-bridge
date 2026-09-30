@@ -220,7 +220,11 @@ func (s *Service) runFlagPoll() {
 	if err != nil {
 		s.log.WithError(err).Error("Failed to get flags from server")
 	} else {
-		s.channel <- readResponseData(data)
+		select {
+		case <-s.ctx.Done():
+			return
+		case s.channel <- readResponseData(data):
+		}
 	}
 
 	for {
@@ -234,7 +238,11 @@ func (s *Service) runFlagPoll() {
 				s.log.WithError(err).Error("Failed to get feature flags from server")
 				continue
 			}
-			s.channel <- readResponseData(data)
+			select {
+			case <-s.ctx.Done():
+				return
+			case s.channel <- readResponseData(data):
+			}
 		}
 	}
 }
@@ -271,7 +279,6 @@ func (s *Service) GetFlagValue(key string) bool {
 func (s *Service) Close() {
 	s.log.Info("Closing service")
 	s.cancel()
-	close(s.channel)
 }
 
 // ModifyPollPeriodAndJitter is only used for testing.

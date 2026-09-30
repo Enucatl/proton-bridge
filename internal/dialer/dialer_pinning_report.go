@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -99,6 +100,10 @@ func newTLSReport(host, port, server string, certChain, knownPins []string, appV
 
 // sendReport posts the given TLS report to the standard TLS Report URI.
 func sendReport(report tlsReport, userAgent, appVersion, hostURL, remoteURI string) error {
+	if constants.IsContainer {
+		return nil
+	}
+
 	now := time.Now()
 
 	report.DateTime = now.Format(time.RFC3339)

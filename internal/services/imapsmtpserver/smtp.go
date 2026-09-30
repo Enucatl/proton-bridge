@@ -47,7 +47,7 @@ func newSMTPServer(accounts *smtpservice.Accounts, settings SMTPSettingsProvider
 
 	smtpServer.TLSConfig = settings.TLSConfig()
 	smtpServer.Domain = constants.Host
-	smtpServer.AllowInsecureAuth = true
+	smtpServer.AllowInsecureAuth = !constants.IsContainer
 	smtpServer.MaxLineLength = 1 << 16
 	smtpServer.ErrorLog = logging.NewSMTPLogger()
 

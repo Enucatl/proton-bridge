@@ -25,6 +25,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/stretchr/testify/require"
 )
@@ -112,7 +113,7 @@ func TestBridge_Settings_IMAPSSL(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, storeKey []byte) {
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
 			// By default, IMAP SSL is disabled.
-			require.False(t, bridge.GetIMAPSSL())
+			require.Equal(t, constants.IsContainer, bridge.GetIMAPSSL())
 
 			// Enable IMAP SSL.
 			require.NoError(t, bridge.SetIMAPSSL(ctx, true))
@@ -144,7 +145,7 @@ func TestBridge_Settings_SMTPSSL(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, storeKey []byte) {
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
 			// By default, SMTP SSL is disabled.
-			require.False(t, bridge.GetSMTPSSL())
+			require.Equal(t, constants.IsContainer, bridge.GetSMTPSSL())
 
 			// Enable SMTP SSL.
 			require.NoError(t, bridge.SetSMTPSSL(ctx, true))

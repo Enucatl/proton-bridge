@@ -19,6 +19,7 @@ package bridge_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -153,6 +154,7 @@ func test_badMessage_badEvent(userFeedback func(t *testing.T, ctx context.Contex
 			})
 
 			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridge.Mocks) {
+				mocks.Reporter.EXPECT().ReportMessageWithContext("Failed to handle event", gomock.Any()).MinTimes(1)
 				userLoginAndSync(ctx, t, bridge, "user", password)
 
 				var messageIDs []string
@@ -163,9 +165,10 @@ func test_badMessage_badEvent(userFeedback func(t *testing.T, ctx context.Contex
 				})
 
 				// If bridge attempts to sync the new messages, it should get a BadRequest error.
-				doBadRequest := true
+				var doBadRequest atomic.Bool
+				doBadRequest.Store(true)
 				s.AddStatusHook(func(req *http.Request) (int, bool) {
-					if !doBadRequest {
+					if !doBadRequest.Load() {
 						return 0, false
 					}
 
@@ -178,13 +181,13 @@ func test_badMessage_badEvent(userFeedback func(t *testing.T, ctx context.Contex
 					return http.StatusBadRequest, true
 				})
 
-				badUserID := userReceivesBadError(t, bridge, mocks)
+				badUserID := userReceivesBadError(t, bridge)
 
 				// Remove messages, make response OK again
 				withClient(ctx, t, s, "user", password, func(ctx context.Context, c *proton.Client) {
 					require.NoError(t, c.DeleteMessage(ctx, messageIDs[0:5]...))
 				})
-				doBadRequest = false
+				doBadRequest.Store(false)
 
 				userFeedback(t, ctx, bridge, badUserID)
 
@@ -953,12 +956,8 @@ func userLoginAndSync(
 func userReceivesBadError(
 	t *testing.T,
 	bridge *bridge.Bridge,
-	mocks *bridge.Mocks,
 ) (userID string) {
 	badEventCh, closeCh := bridge.GetEvents(events.UserBadEvent{})
-
-	// The user will continue to process events and will receive bad request errors.
-	mocks.Reporter.EXPECT().ReportMessageWithContext(gomock.Any(), gomock.Any()).MinTimes(1)
 
 	badEvent, ok := (<-badEventCh).(events.UserBadEvent)
 	require.True(t, ok)
@@ -1004,7 +1003,11 @@ func userContinueEventProcess(
 func eventuallyDial(addr string) (cli *client.Client, err error) {
 	sleep := 1 * time.Second
 	for range 5 {
-		cli, err := client.Dial(addr)
+		if constants.IsContainer {
+			cli, err = client.DialTLS(addr, &tls.Config{InsecureSkipVerify: true})
+		} else {
+			cli, err = client.Dial(addr)
+		}
 		if err == nil {
 			return cli, nil
 		}

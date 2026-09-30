@@ -21,19 +21,21 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
-	"time"
 
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/useragent"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTLSReporter_DoubleReport(t *testing.T) {
-	reportCounter := 0
+	var reportCounter atomic.Int64
 
 	reportServer := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
-		reportCounter++
+		reportCounter.Add(1)
 	}))
+	defer reportServer.Close()
 
 	r := NewTLSReporter("hostURL", "appVersion", useragent.New(), TrustedAPIPins)
 
@@ -42,18 +44,19 @@ func TestTLSReporter_DoubleReport(t *testing.T) {
 		r.ReportCertIssue(reportServer.URL, "myhost", "443", tls.ConnectionState{})
 	}
 
-	// We should only report once.
-	assert.Eventually(t, func() bool {
-		return reportCounter == 1
-	}, time.Second, time.Millisecond)
+	// Duplicate reports are recorded once; containers do not upload them.
+	assert.Len(t, r.sentReports, 1)
+	var wantUploads int64
+	if !constants.IsContainer {
+		wantUploads = 1
+	}
+	assert.Equal(t, wantUploads, reportCounter.Load())
 
 	// If we then report something else many times.
 	for range 10 {
 		r.ReportCertIssue(reportServer.URL, "anotherhost", "443", tls.ConnectionState{})
 	}
 
-	// We should get a second report.
-	assert.Eventually(t, func() bool {
-		return reportCounter == 2
-	}, time.Second, time.Millisecond)
+	assert.Len(t, r.sentReports, 2)
+	assert.Equal(t, wantUploads*2, reportCounter.Load())
 }

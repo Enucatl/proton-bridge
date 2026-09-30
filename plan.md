@@ -1,5 +1,21 @@
 # Minimal Proton Bridge distribution
 
+## Implementation status
+
+The repository now contains the `container` build variant and
+`cmd/proton-bridge-headless`, with file-key vault storage, fail-closed state
+loading, optional custom certificates with stored self-signed fallback,
+native implicit-TLS listeners, healthcheck and signal shutdown. Fork CI, pinned static CGO build inputs,
+Distroless/scratch validation fixtures and release packaging are implemented.
+See [HEADLESS.md](HEADLESS.md) for build, operation and migration instructions.
+
+The changes live directly in this fork, based on `v3.27.1`, with upstream
+module paths. Builds compile this source; upgrades merge or rebase newer
+upstream releases. Publication, deployment, live Proton/client acceptance and
+migration of existing state have not been performed. No running old Bridge
+deployment is available in this workspace; its actual digest and baseline measurements remain
+operator checks. Do not publish the first release before live acceptance.
+
 ## Feasibility and agreed outcome
 
 Build a headless Linux service from Proton Bridge, keeping its mail engine
@@ -8,15 +24,14 @@ key storage. This is feasible without reimplementing Proton authentication,
 cryptography, synchronization, IMAP, or SMTP. Those components remain substantial;
 the goal is the smallest maintainable distribution supporting this deployment.
 
-The first artifact is this plan. Implementation and publication follow separately.
 The assessment used upstream checkout `b9c5dac1` and the deployment found at
 `/export/docker/protonmail-bridge`, corresponding to the intended deployment at
-`/opt/docker/protonmail-bridge`. No replacement binary or migration has been
-validated yet.
+`/opt/docker/protonmail-bridge`. Local binary/runtime validation is recorded in
+HEADLESS.md; live replacement and migration remain operator checks.
 
 Agreed defaults:
 
-- Linux amd64 initially; retain upstream source/history and a small patch set.
+- Linux amd64 initially; retain upstream source/history and focused downstream commits.
 - One executable named `proton-bridge-headless`, with noninteractive operation,
   an interactive provisioning CLI, and a healthcheck mode.
 - Password/TOTP, mailbox-password, and human-verification login flows; omit FIDO2.
@@ -37,9 +52,10 @@ Do not maintain two independent builds of the mail application.
 
 - `upstream`: `git@github.com:ProtonMail/proton-bridge.git`.
 - `origin`: `git@github.com:Enucatl/proton-bridge.git`.
-- Preserve existing upstream tags. Downstream tags use
-  `headless-v<upstream-version>-<revision>`, starting with
-  `headless-v3.27.1-1` after validation.
+- Preserve existing upstream tags and publish matching releases such as
+  `v3.27.1` under those tags. Build the fork's `master` commit through a manual
+  workflow; record that fork revision and attach its exact source archive.
+  GitHub's automatic source links continue to refer to upstream tag contents.
 - Retain the current history and this plan commit. Base implementation on the
   `v3.27.1` release content rather than unreleased master changes.
 - Keep upstream module paths. Embed upstream version, downstream version, and
@@ -50,7 +66,7 @@ Each downstream release contains:
 - `proton-bridge-headless-<release>-linux-amd64.tar.gz`, containing the executable,
   license notices, and operating instructions.
 - `SHA256SUMS`, an SBOM, and build provenance.
-- `proton-bridge-headless-<release>-source.tar.gz`, containing the exact patched
+- `proton-bridge-headless-<release>-source.tar.gz`, containing the exact fork
   source, dependency locks, and build instructions needed to reproduce the build.
 - Release notes stating the upstream base, changes, runtime libraries, client TLS
   requirements, and state migration/rollback constraints.
@@ -121,10 +137,15 @@ network connects consuming containers and permits outbound Proton connections.
 Document the changed container ports and implicit TLS client settings.
 
 Reuse the certificate/key mounted under `/protonmail/certs`. Load them through
-the existing certificate implementation without shell-driven import. Validate
-configured files before serving; missing or invalid files stop startup instead
-of falling back to a self-signed certificate. Restart after renewal. Clients
-use a certificate-covered hostname with suitable local DNS/network aliases.
+the existing certificate implementation without shell-driven import. Custom
+certificates are optional: without a supplied pair, reuse Bridge's self-signed
+certificate stored in the vault. Explicitly configured missing or invalid files
+stop startup. Export the active public certificate to `/data/tls-cert.pem` for
+client trust and credential-free healthchecks. The generated private key stays
+in the encrypted vault; custom private keys remain in their mounted files.
+Restart after renewal. Clients use an identity covered by the certificate with
+suitable local DNS/network aliases; upstream's default certificate covers
+`127.0.0.1`.
 
 ### Runtime packaging
 
@@ -164,21 +185,27 @@ overrides belong in reviewed module changes, not build-time `go get` commands.
   relevant upstream unit/integration tests, focused container-variant tests,
   race checks for affected packages, `go vet`, dependency vulnerability checks,
   and an amd64 build plus runtime smoke test.
+- Add pinned Trivy source misconfiguration/secret and compiled-binary/SBOM scans,
+  using the security baseline's fixed `HIGH,CRITICAL` vulnerability policy.
+  Scanner errors and enforced findings block publication; retain JSON/SARIF
+  reports. Keep `govulncheck` for Go reachability and review static native advisories.
 - Verify the compiled dependency graph/linkage excludes the removed native
   backends and GUI. Exercise healthcheck, TLS listeners, and shutdown in the
   intended runtime without requiring a live Proton account. Check ELF linkage
   and smoke-test the exact release binary in Distroless `static` and `scratch`
   when statically linked; otherwise test the documented minimal fallback.
 - Upload the checked binary as a temporary workflow artifact for review.
-- A pushed `headless-v*` tag runs the same gates, builds the release archive,
+- A manual workflow selecting an existing upstream tag runs the same gates,
+  builds the release archive,
   generates checksums/SBOM/provenance, and creates a draft GitHub Release.
 - Publish the draft automatically only after all gates and artifact generation
   succeed. Upload the exact tested artifact; do not rebuild after testing.
 - Publish with narrowly scoped release permissions; PR jobs have read-only
   permissions and no account/release secrets. Release jobs cannot use untrusted
-  PR code. Do not let remote cache/artifact names select an unverified binary.
-- Live Proton/client acceptance is a separate operator check before creating
-  a release tag, avoiding credentials in ordinary CI.
+  PR code. Validate the selected tag against the pinned upstream version and its
+  ancestry in the fork. Do not let remote cache/artifact names select an unverified binary.
+- Live Proton/client acceptance is a separate operator check before
+  publication, avoiding credentials in ordinary CI.
 
 The Docker repository downloads an explicit release version, verifies its
 checksum, builds and scans its image, and publishes a pinned image. Updating
@@ -207,7 +234,8 @@ Required acceptance scenarios:
 - Missing/truncated/wrong key and damaged vault leave existing bytes untouched.
   Fresh initialization and interruption before vault creation recover safely.
 - Plaintext cannot authenticate; TLS validates certificate trust/hostname;
-  invalid/missing custom certificates prevent startup; renewal works on restart.
+  self-signed fallback persists across restarts;
+  invalid/missing explicitly configured certificates prevent startup; renewal works on restart.
 - IPv4/IPv6 Docker and host-loopback connections work; LAN access is unavailable.
 - Graceful shutdown, state-lock exclusion, healthcheck failures, restart recovery,
   and snapshot restore/rollback.
@@ -217,7 +245,8 @@ Required acceptance scenarios:
   identity and read-only root filesystem in the selected Distroless image;
   static/scratch claims require successful DNS, outbound TLS, SQLite, interactive
   CLI, local TLS healthcheck, and shutdown checks in those images.
-- Replay the patch set across an upstream release boundary and record conflicts.
+- Check Git merge/rebase compatibility across an upstream release boundary and
+  record conflicts.
 
 ## Risks and maintenance policy
 
@@ -228,9 +257,10 @@ to access them. Do not claim an independent security audit or stronger mail
 encryption from this change.
 
 Preserve a few ordered commits for lifecycle, key storage, listeners/TLS, and
-packaging/CI. Upgrade by replaying them onto upstream releases and running the
-gates above. Review security releases promptly: Proton can reject obsolete
-clients, and removing self-update transfers update responsibility to us.
+packaging/CI. Upgrade by merging or rebasing newer upstream releases into the
+downstream branch, resolving conflicts and running the gates above. Review
+security releases promptly: Proton can reject obsolete clients, and removing
+self-update transfers update responsibility to us.
 
 State migrations and refresh-token rotation can prevent image-only rollback;
 restore the snapshot when required and expect possible reauthentication.
@@ -240,5 +270,5 @@ for distributed binaries.
 
 Measure savings after implementation; do not promise an image size, CPU/memory
 reduction, or CGO-free binary before measuring. Proceed if acceptance passes and
-the patch set remains concentrated at application boundaries. Changes expanding
+the changes remain concentrated at application boundaries. Changes expanding
 into mail synchronization, cryptography, or a Gluon fork require reassessment.

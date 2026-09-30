@@ -169,7 +169,7 @@ func withUser(tb testing.TB, ctx context.Context, _ *server.Server, m *proton.Ma
 		nullEventSubscription,
 		nil,
 		observability.NewTestService(),
-		"",
+		tb.TempDir(),
 		true,
 		notifications.NewStore(func() (string, error) {
 			return "", nil

@@ -19,6 +19,7 @@ package bridge_test
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"testing"
@@ -51,7 +52,12 @@ func TestBridge_Report(t *testing.T) {
 			require.True(t, info.State == bridge.Connected)
 
 			// Dial the IMAP port.
-			conn, err := net.Dial("tcp", fmt.Sprintf("%v:%v", constants.Host, b.GetIMAPPort()))
+			var conn net.Conn
+			if constants.IsContainer {
+				conn, err = tls.Dial("tcp", fmt.Sprintf("%v:%v", constants.Host, b.GetIMAPPort()), &tls.Config{InsecureSkipVerify: true})
+			} else {
+				conn, err = net.Dial("tcp", fmt.Sprintf("%v:%v", constants.Host, b.GetIMAPPort()))
+			}
 			require.NoError(t, err)
 			defer func() { require.NoError(t, conn.Close()) }()
 

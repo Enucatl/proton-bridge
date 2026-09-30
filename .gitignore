@@ -38,6 +38,7 @@ proton-bridge
 cmd/Desktop-Bridge/*.exe
 cmd/launcher/*.exe
 bin/
+headless-dist/
 obj/
 
 # Jetbrains (CLion, Golang) cmake build dirs

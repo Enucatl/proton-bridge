@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/ProtonMail/gluon/async"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/ports"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,11 @@ func TestVault_Corrupt(t *testing.T) {
 
 	{
 		_, corrupt, err := vault.New(vaultDir, gluonDir, []byte("bad key"), async.NoopPanicHandler{})
-		require.NoError(t, err)
+		if constants.IsContainer {
+			require.ErrorIs(t, err, vault.ErrDecryptFailed)
+		} else {
+			require.NoError(t, err)
+		}
 		require.ErrorIs(t, corrupt, vault.ErrDecryptFailed)
 	}
 }
@@ -74,8 +79,12 @@ func TestVault_Corrupt_JunkData(t *testing.T) {
 		require.NoError(t, err)
 
 		_, corrupt, err := vault.New(vaultDir, gluonDir, []byte("my secret key"), async.NoopPanicHandler{})
-		require.NoError(t, err)
 		require.ErrorIs(t, corrupt, vault.ErrUnmarshal)
+		if constants.IsContainer {
+			require.ErrorIs(t, err, vault.ErrUnmarshal)
+		} else {
+			require.NoError(t, err)
+		}
 	}
 }
 

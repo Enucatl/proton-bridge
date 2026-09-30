@@ -31,6 +31,7 @@ import (
 	"sync"
 
 	"github.com/ProtonMail/gluon/async"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/bradenaw/juniper/parallel"
 	"github.com/bradenaw/juniper/xslices"
 	"github.com/google/uuid"
@@ -375,6 +376,10 @@ func newVault(path, gluonDir string, gcm cipher.AEAD) (*Vault, error, error) {
 	}
 
 	if corrupt != nil {
+		if constants.IsContainer {
+			return nil, corrupt, corrupt
+		}
+
 		newEnc, err := initVault(path, gluonDir, gcm)
 		if err != nil {
 			return nil, corrupt, err

@@ -28,7 +28,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
-	"github.com/emersion/go-smtp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,7 +38,7 @@ func TestServerManager_ServersStartWithBridge(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, imapClient.Logout())
 
-			smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			smtpClient.Close() //nolint:errcheck
 		})
@@ -58,7 +57,7 @@ func TestServerManager_ServersKeepsRunningfterUserLogsOut(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, imapClient.Logout())
 
-			smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			smtpClient.Close() //nolint:errcheck
 		})
@@ -90,7 +89,7 @@ func TestServerManager_ServersDoNotStopWhenThereIsStillOneActiveUser(t *testing.
 			require.NoError(t, err)
 			require.NoError(t, imapClient.Logout())
 
-			smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			smtpClient.Close() //nolint:errcheck
 		})
@@ -119,7 +118,7 @@ func TestServerManager_NetworkLossStopsServers(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, imapClient.Logout())
 
-			smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			smtpClient.Close() //nolint:errcheck
 

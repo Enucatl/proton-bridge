@@ -26,9 +26,11 @@ import (
 	"github.com/ProtonMail/gluon"
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/gluon/connector"
+	imapEvents "github.com/ProtonMail/gluon/events"
 	"github.com/ProtonMail/gluon/imap"
 	"github.com/ProtonMail/gluon/logging"
 	"github.com/ProtonMail/gluon/reporter"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/imapservice"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
@@ -44,8 +46,9 @@ import (
 type Service struct {
 	requests *cpc.CPC
 
-	imapServer   *gluon.Server
-	imapListener net.Listener
+	imapServer          *gluon.Server
+	imapListener        net.Listener
+	imapListenerRemoved <-chan imapEvents.Event
 
 	smtpServer   *smtp.Server
 	smtpListener net.Listener
@@ -109,22 +112,38 @@ func (sm *Service) Init(ctx context.Context, group *async.Group, subscription ev
 	sm.imapServer = imapServer
 	sm.smtpServer = smtpServer
 
-	group.Once(func(ctx context.Context) {
-		logging.DoAnnotated(ctx, func(ctx context.Context) {
-			sm.run(ctx, subscription)
-		}, logging.Labels{
-			"service": "server-manager",
+	run := func() {
+		group.Once(func(ctx context.Context) {
+			logging.DoAnnotated(ctx, func(ctx context.Context) {
+				sm.run(ctx, subscription)
+			}, logging.Labels{
+				"service": "server-manager",
+			})
 		})
-	})
+	}
+	if !constants.IsContainer {
+		run()
+	}
 
 	if err := sm.serveIMAP(ctx); err != nil {
 		sm.log.WithError(err).Error("Failed to start IMAP server on bridge start")
 		sm.imapListener = nil
+		if constants.IsContainer {
+			return err
+		}
 	}
 
 	if err := sm.serveSMTP(ctx); err != nil {
 		sm.log.WithError(err).Error("Failed to start SMTP server on bridge start")
 		sm.smtpListener = nil
+		if constants.IsContainer {
+			_ = sm.closeIMAPServer(ctx)
+			return err
+		}
+	}
+
+	if constants.IsContainer {
+		run()
 	}
 
 	return nil
@@ -521,6 +540,9 @@ func (sm *Service) createIMAPServer(ctx context.Context) (*gluon.Server, error) 
 		sm.featureFlagProvider,
 	)
 	if err == nil {
+		if constants.IsContainer {
+			sm.imapListenerRemoved = server.AddWatcher(imapEvents.ListenerRemoved{})
+		}
 		sm.eventPublisher.PublishEvent(ctx, events.IMAPServerCreated{})
 	}
 
@@ -561,16 +583,8 @@ func (sm *Service) closeSMTPServer(ctx context.Context) error {
 }
 
 func (sm *Service) closeIMAPServer(ctx context.Context) error {
-	if sm.imapListener != nil {
-		sm.log.Info("Closing IMAP Listener")
-
-		if err := sm.imapListener.Close(); err != nil {
-			return fmt.Errorf("failed to close IMAP listener: %w", err)
-		}
-
-		sm.imapListener = nil
-
-		sm.eventPublisher.PublishEvent(ctx, events.IMAPServerStopped{})
+	if err := sm.stopIMAPListener(ctx); err != nil {
+		return fmt.Errorf("failed to close IMAP listener: %w", err)
 	}
 
 	if sm.imapServer != nil {
@@ -590,14 +604,8 @@ func (sm *Service) closeIMAPServer(ctx context.Context) error {
 func (sm *Service) restartIMAP(ctx context.Context) error {
 	sm.log.Info("Restarting IMAP server")
 
-	if sm.imapListener != nil {
-		if err := sm.imapListener.Close(); err != nil {
-			return fmt.Errorf("failed to close IMAP listener: %w", err)
-		}
-
-		sm.imapListener = nil
-
-		sm.eventPublisher.PublishEvent(ctx, events.IMAPServerStopped{})
+	if err := sm.stopIMAPListener(ctx); err != nil {
+		return fmt.Errorf("failed to close IMAP listener: %w", err)
 	}
 
 	return sm.serveIMAP(ctx)
@@ -631,8 +639,9 @@ func (sm *Service) serveSMTP(ctx context.Context) error {
 
 		sm.smtpListener = smtpListener
 
+		smtpServer := sm.smtpServer
 		sm.tasks.Once(func(context.Context) {
-			if err := sm.smtpServer.Serve(smtpListener); err != nil {
+			if err := smtpServer.Serve(smtpListener); err != nil {
 				sm.log.WithError(err).Info("SMTP server stopped")
 			}
 		})
@@ -706,10 +715,28 @@ func (sm *Service) serveIMAP(ctx context.Context) error {
 func (sm *Service) stopIMAPListener(ctx context.Context) error {
 	sm.log.Info("Stopping IMAP listener")
 	if sm.imapListener != nil {
+		address := sm.imapListener.Addr().String()
 		if err := sm.imapListener.Close(); err != nil {
 			return err
 		}
-
+		if constants.IsContainer {
+			// Gluon publishes ListenerRemoved after its rolling counter has stopped.
+			// Wait before reusing the server so the next Serve cannot race that cleanup.
+		waitForRemoval:
+			for {
+				select {
+				case event, ok := <-sm.imapListenerRemoved:
+					if !ok {
+						return fmt.Errorf("IMAP listener watcher closed")
+					}
+					if removed, ok := event.(imapEvents.ListenerRemoved); ok && removed.Addr.String() == address {
+						break waitForRemoval
+					}
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}
 		sm.imapListener = nil
 
 		sm.eventPublisher.PublishEvent(ctx, events.IMAPServerStopped{})

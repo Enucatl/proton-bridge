@@ -66,6 +66,10 @@ func New(
 
 	// We want to exit at the first Ctrl+C. By default, ishell requires two.
 	fe.Interrupt(func(_ *ishell.Context, _ int, _ string) {
+		if constants.IsContainer {
+			fe.Stop()
+			return
+		}
 		os.Exit(1)
 	})
 
@@ -87,7 +91,9 @@ func New(
 		Aliases: []string{"a", "k", "keychain"},
 		Func:    fe.deleteEverything,
 	})
-	fe.AddCmd(clearCmd)
+	if !constants.IsContainer {
+		fe.AddCmd(clearCmd)
+	}
 
 	// Change commands.
 	changeCmd := &ishell.Cmd{
@@ -129,6 +135,12 @@ func New(
 		Aliases: []string{"ssl-smtp", "starttls-smtp"},
 		Func:    fe.changeSMTPSecurity,
 	})
+	if constants.IsContainer {
+		changeCmd.DeleteCmd("imap-port")
+		changeCmd.DeleteCmd("smtp-port")
+		changeCmd.DeleteCmd("imap-security")
+		changeCmd.DeleteCmd("smtp-security")
+	}
 	fe.AddCmd(changeCmd)
 
 	// DoH commands.
@@ -149,7 +161,7 @@ func New(
 	fe.AddCmd(dohCmd)
 
 	//goland:noinspection GoBoolExpressions
-	if runtime.GOOS == platform.MACOS {
+	if !constants.IsContainer && runtime.GOOS == platform.MACOS {
 		// Apple Mail commands.
 		configureCmd := &ishell.Cmd{
 			Name: "configure-apple-mail",
@@ -166,7 +178,7 @@ func New(
 	}
 
 	//goland:noinspection GoBoolExpressions
-	if runtime.GOOS == platform.MACOS {
+	if !constants.IsContainer && runtime.GOOS == platform.MACOS {
 		certCmd.AddCmd(&ishell.Cmd{
 			Name: "status",
 			Help: "check if the TLS certificate used by Bridge is installed in the OS keychain",
@@ -193,6 +205,9 @@ func New(
 		Help: "import a TLS certificate to be used by Bridge",
 		Func: fe.importTLSCerts,
 	})
+	if constants.IsContainer {
+		certCmd.DeleteCmd("import")
+	}
 	fe.AddCmd(certCmd)
 
 	// All mail visibility commands.
@@ -252,7 +267,9 @@ func New(
 		Help: "switch to the stable updates channel",
 		Func: fe.selectStableChannel,
 	})
-	fe.AddCmd(updatesCmd)
+	if !constants.IsContainer {
+		fe.AddCmd(updatesCmd)
+	}
 
 	// Print info commands.
 	fe.AddCmd(&ishell.Cmd{
@@ -346,7 +363,9 @@ func New(
 		Help: "usage diagnostics collection will be disabled",
 		Func: fe.disableTelemetry,
 	})
-	fe.AddCmd(telemetryCmd)
+	if !constants.IsContainer {
+		fe.AddCmd(telemetryCmd)
+	}
 
 	dbgCmd := &ishell.Cmd{
 		Name: "debug",

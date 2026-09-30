@@ -20,7 +20,6 @@ package bridge_test
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -36,7 +35,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-sasl"
-	"github.com/emersion/go-smtp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,12 +58,11 @@ func TestBridge_Send(t *testing.T) {
 
 			for i := range 10 {
 				// Dial the server.
-				client, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+				client, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 				require.NoError(t, err)
 				defer client.Close() //nolint:errcheck
 
 				// Upgrade to TLS.
-				require.NoError(t, client.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 
 				if i%2 == 0 {
 					// Authorize with SASL PLAIN.
@@ -165,12 +162,11 @@ func TestBridge_SendDraftFlags(t *testing.T) {
 			}
 
 			// Connect the SMTP client.
-			smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			defer smtpClient.Close() //nolint:errcheck
 
 			// Upgrade to TLS.
-			require.NoError(t, smtpClient.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 
 			// Authorize with SASL PLAIN.
 			require.NoError(t, smtpClient.Auth(
@@ -278,12 +274,11 @@ func TestBridge_SendInvite(t *testing.T) {
 			}
 
 			// Connect the SMTP client.
-			smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			defer smtpClient.Close() //nolint:errcheck
 
 			// Upgrade to TLS.
-			require.NoError(t, smtpClient.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 
 			// Authorize with SASL PLAIN.
 			require.NoError(t, smtpClient.Auth(
@@ -440,12 +435,11 @@ SGVsbG8gd29ybGQK
 
 			for _, m := range messages {
 				// Dial the server.
-				client, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+				client, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 				require.NoError(t, err)
 				defer client.Close() //nolint:errcheck
 
 				// Upgrade to TLS.
-				require.NoError(t, client.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 
 				// Authorize with SASL LOGIN.
 				require.NoError(t, client.Auth(
@@ -645,12 +639,11 @@ Hello world
 
 			for _, m := range messages {
 				// Dial the server.
-				client, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+				client, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 				require.NoError(t, err)
 				defer client.Close() //nolint:errcheck
 
 				// Upgrade to TLS.
-				require.NoError(t, client.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 
 				// Authorize with SASL LOGIN.
 				require.NoError(t, client.Auth(
@@ -731,12 +724,11 @@ func TestBridge_SendAddressDisabled(t *testing.T) {
 			require.NoError(t, err)
 
 			// Dial the server.
-			client, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
+			client, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(bridge.GetSMTPPort())))
 			require.NoError(t, err)
 			defer client.Close() //nolint:errcheck
 
 			// Upgrade to TLS.
-			require.NoError(t, client.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 			require.NoError(t, client.Auth(
 				sasl.NewLoginClient(
 					senderInfo.Addresses[0],

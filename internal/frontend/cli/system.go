@@ -28,6 +28,7 @@ import (
 
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
 	"github.com/ProtonMail/proton-bridge/v3/internal/certs"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/ports"
 	"github.com/abiosoft/ishell"
 )
@@ -371,5 +372,9 @@ func (f *frontendCLI) repair(_ *ishell.Context) {
 }
 
 func (f *frontendCLI) getVersion(_ *ishell.Context) {
+	if constants.IsContainer {
+		f.Printf("proton-bridge-headless %s (upstream %s, revision %s)\n", constants.DownstreamVersion, constants.Version, constants.Revision)
+		return
+	}
 	f.Printf("Proton Mail Bridge %s\n", f.bridge.GetCurrentVersion())
 }

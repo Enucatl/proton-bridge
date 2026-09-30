@@ -227,6 +227,10 @@ func New(
 		return nil, nil, fmt.Errorf("failed to initialize bridge: %w", err)
 	}
 
+	if constants.IsContainer {
+		bridge.unleashService.Run()
+	}
+
 	return bridge, eventCh, nil
 }
 
@@ -356,7 +360,9 @@ func newBridge(
 
 	bridge.syncService.Run()
 
-	bridge.unleashService.Run()
+	if !constants.IsContainer {
+		bridge.unleashService.Run()
+	}
 
 	bridge.observabilityService.Run(bridge)
 
@@ -444,6 +450,11 @@ func (bridge *Bridge) init(tlsReporter TLSReporter) error {
 		bridge.publish(events.AllUsersLoaded{})
 	})
 	defer bridge.goLoad()
+
+	if constants.IsContainer {
+		bridge.goUpdate = func() {}
+		return nil
+	}
 
 	// Check for updates when triggered.
 	bridge.goUpdate = bridge.tasks.PeriodicOrTrigger(constants.UpdateCheckInterval, 0, func(ctx context.Context) {

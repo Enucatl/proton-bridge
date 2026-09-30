@@ -20,7 +20,6 @@ package bridge_test
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -36,7 +35,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	go_imap "github.com/emersion/go-imap"
 	"github.com/emersion/go-sasl"
-	"github.com/emersion/go-smtp"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
@@ -113,12 +111,11 @@ Hello
 			newLiteralModified := append(newLiteral, []byte(" world from client2")...) //nolint:gocritic
 
 			func() {
-				smtpClient, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(b.GetSMTPPort())))
+				smtpClient, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(b.GetSMTPPort())))
 				require.NoError(t, err)
 				defer func() { _ = smtpClient.Close() }()
 
 				// Upgrade to TLS.
-				require.NoError(t, smtpClient.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 
 				// Authorize with SASL PLAIN.
 				require.NoError(t, smtpClient.Auth(sasl.NewPlainClient(

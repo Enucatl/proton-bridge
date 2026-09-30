@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -42,7 +43,7 @@ func getTrustedServerWithHandler(handler http.HandlerFunc) *httptest.Server {
 	proxy := httptest.NewTLSServer(handler)
 
 	pin := certFingerprint(proxy.Certificate())
-	TrustedAPIPins = append(TrustedAPIPins, pin)
+	TrustedAPIPins = append(slices.Clone(TrustedAPIPins), pin)
 
 	return proxy
 }
@@ -130,7 +131,7 @@ func closeServer(server *httptest.Server) {
 
 	for i := range TrustedAPIPins {
 		if TrustedAPIPins[i] == pin {
-			TrustedAPIPins = append(TrustedAPIPins[:i], TrustedAPIPins[i:]...)
+			TrustedAPIPins = slices.Delete(slices.Clone(TrustedAPIPins), i, i+1)
 			break
 		}
 	}

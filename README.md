@@ -2,6 +2,9 @@
 Copyright (c) 2026 Proton AG
 
 This repository holds the Proton Mail Bridge application.
+
+For the fork's headless Linux binary, container build, operating instructions,
+and migration procedure, see [HEADLESS.md](HEADLESS.md).
 For a detailed build information see [BUILDS](./BUILDS.md).
 The license can be found in [LICENSE](./LICENSE) file, for more licensing information see [COPYING_NOTES](./COPYING_NOTES.md).
 For contribution policy see [CONTRIBUTING](./CONTRIBUTING.md).

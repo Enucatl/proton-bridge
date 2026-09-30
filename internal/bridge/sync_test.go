@@ -655,6 +655,20 @@ func TestBridge_CorruptedVaultClearsPreviousIMAPSyncState(t *testing.T) {
 
 		// corrupt the vault
 		require.NoError(t, os.WriteFile(filepath.Join(settingsPath, "vault.enc"), []byte("Trash!"), 0o600))
+		if constants.IsContainer {
+			_, corrupt, err := vault.New(settingsPath, t.TempDir(), vaultKey, async.NoopPanicHandler{})
+			require.ErrorIs(t, corrupt, vault.ErrUnmarshal)
+			require.ErrorIs(t, err, vault.ErrUnmarshal)
+			after, err := os.ReadFile(filepath.Join(settingsPath, "vault.enc"))
+			require.NoError(t, err)
+			require.Equal(t, []byte("Trash!"), after)
+			state, err := imapservice.NewSyncState(syncStatePath, sentry.NullSentryReporter{})
+			require.NoError(t, err)
+			syncStatus, err := state.GetSyncStatus(context.Background())
+			require.NoError(t, err)
+			require.True(t, syncStatus.IsComplete())
+			return
+		}
 
 		// Bridge starts but can't find the gluon database dir; there should be no error.
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
@@ -992,5 +1006,5 @@ func countBytesRead(ctl *proton.NetCtl, fn func()) uint64 {
 
 	fn()
 
-	return read
+	return atomic.LoadUint64(&read)
 }

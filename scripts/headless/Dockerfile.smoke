@@ -1,0 +1,15 @@
+ARG DISTROLESS_IMAGE
+FROM ${DISTROLESS_IMAGE} AS distroless
+COPY proton-bridge-headless /proton-bridge-headless
+COPY runtime-probe /runtime-probe
+ENV HOME=/data TMPDIR=/tmp
+USER 1000:1000
+ENTRYPOINT ["/proton-bridge-headless"]
+
+FROM scratch AS scratch
+COPY proton-bridge-headless /proton-bridge-headless
+COPY runtime-probe /runtime-probe
+COPY ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+ENV HOME=/data TMPDIR=/tmp
+USER 1000:1000
+ENTRYPOINT ["/proton-bridge-headless"]

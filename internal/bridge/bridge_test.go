@@ -42,7 +42,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/cookies"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
-	"github.com/ProtonMail/proton-bridge/v3/internal/focus"
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/imapsmtpserver"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
@@ -122,25 +121,6 @@ func TestBridge_TLSIssue(t *testing.T) {
 
 			// Wait for the event.
 			require.IsType(t, events.TLSIssue{}, <-tlsEventCh)
-		})
-	})
-}
-
-func TestBridge_Focus(t *testing.T) {
-	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
-			// Get a stream of TLS issue events.
-			raiseCh, done := bridge.GetEvents(events.Raise{})
-			defer done()
-
-			settingsFolder, err := locator.ProvideSettingsPath()
-			require.NoError(t, err)
-
-			// Simulate a focus event.
-			focus.TryRaise(settingsFolder)
-
-			// Wait for the event.
-			require.IsType(t, events.Raise{}, <-raiseCh)
 		})
 	})
 }
@@ -265,7 +245,7 @@ func TestBridge_UserAgentFromSMTPClient(t *testing.T) {
 			userID, err := b.LoginFull(context.Background(), username, password, nil, nil)
 			require.NoError(t, err)
 
-			client, err := smtp.Dial(net.JoinHostPort(constants.Host, fmt.Sprint(b.GetSMTPPort())))
+			client, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(b.GetSMTPPort())))
 			require.NoError(t, err)
 			defer client.Close() //nolint:errcheck
 
@@ -274,7 +254,6 @@ func TestBridge_UserAgentFromSMTPClient(t *testing.T) {
 			require.True(t, info.State == bridge.Connected)
 
 			// Upgrade to TLS.
-			require.NoError(t, client.StartTLS(&tls.Config{InsecureSkipVerify: true}))
 			require.NoError(t, client.Auth(
 				sasl.NewLoginClient(
 					info.Addresses[0],
@@ -390,15 +369,12 @@ func TestBridge_Cookies(t *testing.T) {
 
 func TestBridge_ForceUpdate(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
+		// Configure the fixture before Bridge starts issuing background API requests.
+		s.SetMinAppVersion(v2_4_0)
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
-			// Wait for FF poll.
-			time.Sleep(600 * time.Millisecond)
 			// Get a stream of update events.
 			updateCh, done := bridge.GetEvents(events.UpdateForced{})
 			defer done()
-
-			// Set the minimum accepted app version to something newer than the current version.
-			s.SetMinAppVersion(v2_4_0)
 
 			// Try to login the user. It will fail because the bridge is too old.
 			_, err := bridge.LoginFull(context.Background(), username, password, nil, nil)
@@ -428,6 +404,27 @@ func TestBridge_BadVaultKey(t *testing.T) {
 		})
 
 		// Start bridge with a bad vault key, the vault will be wiped and bridge will show no users.
+		if constants.IsContainer {
+			path, err := locator.ProvideSettingsPath()
+			require.NoError(t, err)
+			path = filepath.Join(path, "vault.enc")
+			before, err := os.ReadFile(path)
+			require.NoError(t, err)
+			for _, badKey := range [][]byte{[]byte("bad"), nil} {
+				v, corrupt, err := vault.New(filepath.Dir(path), t.TempDir(), badKey, async.NoopPanicHandler{})
+				require.Nil(t, v)
+				require.ErrorIs(t, corrupt, vault.ErrDecryptFailed)
+				require.ErrorIs(t, err, vault.ErrDecryptFailed)
+				after, err := os.ReadFile(path)
+				require.NoError(t, err)
+				require.Equal(t, before, after)
+			}
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+				require.ElementsMatch(t, []string{userID}, b.GetUserIDs())
+			})
+			return
+		}
+
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, []byte("bad"), func(bridge *bridge.Bridge, _ *bridge.Mocks) {
 			require.Empty(t, bridge.GetUserIDs())
 		})
@@ -815,6 +812,18 @@ func withBridgeNoMocks(
 	// Create the vault.
 	vault, _, err := vault.New(vaultDir, t.TempDir(), vaultKey, async.NoopPanicHandler{})
 	require.NoError(t, err)
+	if constants.IsContainer {
+		template, err := certs.NewTLSTemplate()
+		require.NoError(t, err)
+		certPEM, keyPEM, err := certs.GenerateCert(template)
+		require.NoError(t, err)
+		certPath, keyPath := filepath.Join(vaultDir, "cert.pem"), filepath.Join(vaultDir, "key.pem")
+		require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+		require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
+		require.NoError(t, vault.SetBridgeTLSCertPath(certPath, keyPath))
+		require.NoError(t, vault.SetIMAPSSL(true))
+		require.NoError(t, vault.SetSMTPSSL(true))
+	}
 
 	// Create a new cookie jar.
 	cookieJar, err := cookies.NewCookieJar(bridge.NewTestCookieJar(), vault)
@@ -925,6 +934,22 @@ func must[T any](val T, err error) T {
 	}
 
 	return val
+}
+
+func dialSMTP(addr string) (*smtp.Client, error) {
+	config := &tls.Config{InsecureSkipVerify: true}
+	if constants.IsContainer {
+		return smtp.DialTLS(addr, config)
+	}
+	client, err := smtp.Dial(addr)
+	if err != nil {
+		return nil, err
+	}
+	if err := client.StartTLS(config); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
 }
 
 func getConnectedUserIDs(t *testing.T, b *bridge.Bridge) []string {

@@ -35,6 +35,9 @@ var (
 	// Version of the build.
 	Version = "0.0.0"
 
+	// DownstreamVersion identifies the headless distribution.
+	DownstreamVersion = "dev"
+
 	// Revision is build time commit hash.
 	Revision = ""
 

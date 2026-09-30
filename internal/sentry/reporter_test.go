@@ -20,6 +20,8 @@ package sentry
 import (
 	"testing"
 
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
+
 	r "github.com/stretchr/testify/require"
 
 	"github.com/getsentry/sentry-go"
@@ -33,6 +35,11 @@ func TestSkipDuringUnwind(t *testing.T) {
 		SkipDuringUnwind()
 		SkipDuringUnwind()
 	}()
+
+	if constants.IsContainer {
+		r.Empty(t, skippedFunctions)
+		return
+	}
 
 	wantSkippedFunctions := []string{
 		"github.com/ProtonMail/proton-bridge/v3/internal/sentry.TestSkipDuringUnwind",

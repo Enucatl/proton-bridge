@@ -29,6 +29,7 @@ import (
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/gluon/reporter"
 	"github.com/ProtonMail/go-proton-api"
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/safe"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/imapservice"
@@ -701,6 +702,9 @@ func (user *User) IsTelemetryEnabled(ctx context.Context) bool {
 
 // SendTelemetry send telemetry request.
 func (user *User) SendTelemetry(ctx context.Context, data []byte) error {
+	if constants.IsContainer {
+		return nil
+	}
 	var req proton.SendStatsReq
 	if err := json.Unmarshal(data, &req); err != nil {
 		user.log.WithError(err).Error("Failed to build telemetry request.")

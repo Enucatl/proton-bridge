@@ -3,7 +3,7 @@ export CGO_ENABLED=1
 
 # By default, the target OS is the same as the host OS,
 # but this can be overridden by setting TARGET_OS to "windows"/"darwin"/"linux".
-GOOS:=$(shell go env GOOS)
+GOOS:=$(shell go env GOOS 2>/dev/null)
 TARGET_CMD?=Desktop-Bridge
 TARGET_OS?=${GOOS}
 ROOT_DIR:=$(realpath .)
@@ -102,6 +102,17 @@ else
 endif
 
 build: build-gui
+
+# Fork binary build/validation; runtime packaging belongs to the Docker repository.
+.PHONY: headless-build headless-check headless-smoke headless-package
+headless-build:
+	./scripts/headless/run.sh build
+headless-check:
+	./scripts/headless/run.sh check
+headless-smoke:
+	./scripts/headless/smoke.sh
+headless-package:
+	./scripts/headless/run.sh package
 
 build-gui: ${TGZ_TARGET}
 

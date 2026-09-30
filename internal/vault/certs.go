@@ -23,21 +23,27 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/sirupsen/logrus"
 )
 
 // GetBridgeTLSCert returns the PEM-encoded certificate for the bridge.
 // If CertPEMPath is set, it will attempt to read the certificate from the file.
 // Otherwise, or on read/validation failure, it will return the certificate from the vault.
+// Container builds only fall back when no custom certificate is configured.
 func (vault *Vault) GetBridgeTLSCert() ([]byte, []byte) {
 	certs := vault.getSafe().Certs
 
-	if certPath, keyPath := certs.CustomCertPath, certs.CustomKeyPath; certPath != "" && keyPath != "" {
+	if certPath, keyPath := certs.CustomCertPath, certs.CustomKeyPath; certPath != "" || keyPath != "" {
 		if certPEM, keyPEM, err := readPEMCert(certPath, keyPath); err == nil {
 			return certPEM, keyPEM
 		}
 
-		logrus.Error("Failed to read certificate from file, using default")
+		logrus.Error("Failed to read certificate from file")
+
+		if constants.IsContainer {
+			return nil, nil
+		}
 	}
 
 	return certs.Bridge.Cert, certs.Bridge.Key
@@ -45,8 +51,10 @@ func (vault *Vault) GetBridgeTLSCert() ([]byte, []byte) {
 
 // SetBridgeTLSCertPath sets the path to PEM-encoded certificates for the bridge.
 func (vault *Vault) SetBridgeTLSCertPath(certPath, keyPath string) error {
-	if _, _, err := readPEMCert(certPath, keyPath); err != nil {
-		return fmt.Errorf("invalid certificate: %w", err)
+	if !constants.IsContainer || certPath != "" || keyPath != "" {
+		if _, _, err := readPEMCert(certPath, keyPath); err != nil {
+			return fmt.Errorf("invalid certificate: %w", err)
+		}
 	}
 
 	return vault.modSafe(func(data *Data) {

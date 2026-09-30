@@ -18,14 +18,12 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"runtime"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/ProtonMail/gluon/imap"
-	"github.com/ProtonMail/go-autostart"
-	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/crash"
@@ -34,10 +32,8 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
 	"github.com/ProtonMail/proton-bridge/v3/internal/sentry"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
-	"github.com/ProtonMail/proton-bridge/v3/internal/updater"
 	"github.com/ProtonMail/proton-bridge/v3/internal/useragent"
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
-	"github.com/ProtonMail/proton-bridge/v3/internal/versioner"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/keychain"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
@@ -128,43 +124,11 @@ func withBridge(
 	}
 
 	// Ensure we close bridge when we exit.
-	defer bridge.Close(c.Context)
+	closeCtx := c.Context
+	if constants.IsContainer {
+		closeCtx = context.Background()
+	}
+	defer bridge.Close(closeCtx)
 
 	return fn(bridge, eventCh)
-}
-
-func newAutostarter(exe string) *autostart.App {
-	logrus.Debug("Creating autostarter")
-
-	return &autostart.App{
-		Name:        constants.FullAppName,
-		DisplayName: constants.FullAppName,
-		Exec:        []string{exe, "--" + flagNoWindow},
-	}
-}
-
-func newUpdater(locations *locations.Locations) (*updater.Updater, error) {
-	updatesDir, err := locations.ProvideUpdatesPath()
-	if err != nil {
-		return nil, fmt.Errorf("could not provide updates path: %w", err)
-	}
-
-	logrus.WithField("updates", updatesDir).Debug("Creating updater")
-
-	key, err := crypto.NewKeyFromArmored(updater.DefaultPublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("could not create key from armored: %w", err)
-	}
-
-	verifier, err := crypto.NewKeyRing(key)
-	if err != nil {
-		return nil, fmt.Errorf("could not create key ring: %w", err)
-	}
-
-	return updater.NewUpdater(
-		versioner.New(updatesDir),
-		verifier,
-		constants.UpdateName,
-		runtime.GOOS,
-	), nil
 }
