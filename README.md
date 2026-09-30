@@ -1,10 +1,57 @@
 # Proton Mail Bridge
 Copyright (c) 2026 Proton AG
 
+## what is this fork about?
+
+This fork turns Proton Mail Bridge into a minimal headless Linux amd64 service
+for containers, retaining upstream's mail synchronization, IMAP/SMTP engine,
+SQLite storage, and Proton API security checks.
+
+We simplify the runtime by:
+
+- Shipping one statically linked executable that runs directly as PID 1, with
+  native listeners, healthchecks, and graceful shutdown. It needs no shell,
+  process supervisor, `socat` forwarding, or runtime shared libraries and can
+  run in Distroless or `scratch` containers.
+- Excluding GUI, gRPC desktop IPC, desktop integrations, OS keychains, and FIDO2
+  dependencies from the headless build. Password/TOTP login remains available;
+  accounts requiring only hardware security keys need upstream Bridge.
+- Replacing the `pass`/GPG/keychain stack with a private `0600` vault key file.
+  The vault and mail cache remain encrypted; backups containing the key must
+  stay private.
+- Disabling automatic updates and automatic telemetry, crash, and TLS diagnostic
+  uploads. Operators deploy reviewed releases; explicit bug reports remain
+  available.
+
+We harden the service by requiring TLS for mail connections,
+preventing concurrent access to the same state, and stopping
+startup on invalid vault keys, damaged vaults, or invalid configured certificates
+without resetting existing state. Deployment uses a dedicated container network,
+host ports published only on loopback, a nonroot service identity, a read-only
+root filesystem, and dropped capabilities. Build inputs are pinned, and release
+checks cover dependencies, vulnerabilities, secrets, and runtime behavior.
+
+Both mail listeners require **implicit TLS**: encryption starts before any
+IMAP/SMTP greeting or authentication. Clients must select **SSL/TLS** on container
+ports **1143** (IMAP) and **1025** (SMTP), and validate certificate trust and
+hostname. [RFC 8314](https://www.rfc-editor.org/rfc/rfc8314.html#section-3)
+recommends this mode for mail client access and submission. STARTTLS begins with
+plaintext protocol negotiation and upgrades the connection before login; properly
+enforced STARTTLS uses the same TLS cryptography and protects credentials equally
+well. Our implicit TLS requirement removes the plaintext startup phase and makes
+encryption mandatory. It also avoids patching the pinned upstream Gluon IMAP
+engine, which permits login before STARTTLS and exposes no setting to require
+the upgrade. Upstream Bridge supports both modes; this fork requires its existing
+implicit TLS mode for container connections.
+
+For build, operation, migration, and acceptance details, see
+[HEADLESS.md](HEADLESS.md). Live account/client authentication and sending remain
+acceptance requirements; successful TLS handshakes alone do not verify them.
+The sections below describe the upstream desktop application retained in this
+repository.
+
 This repository holds the Proton Mail Bridge application.
 
-For the fork's headless Linux binary, container build, operating instructions,
-and migration procedure, see [HEADLESS.md](HEADLESS.md).
 For a detailed build information see [BUILDS](./BUILDS.md).
 The license can be found in [LICENSE](./LICENSE) file, for more licensing information see [COPYING_NOTES](./COPYING_NOTES.md).
 For contribution policy see [CONTRIBUTING](./CONTRIBUTING.md).
