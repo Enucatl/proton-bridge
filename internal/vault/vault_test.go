@@ -107,6 +107,36 @@ func TestVault_Reset(t *testing.T) {
 	require.Equal(t, ports.FindFreePortFrom(1025), s.GetSMTPPort())
 }
 
+func TestVault_UpdateFailureKeepsPreviousData(t *testing.T) {
+	s := newVault(t)
+	require.NoError(t, s.SetIMAPPort(1234))
+
+	previous, err := os.ReadFile(s.Path())
+	require.NoError(t, err)
+	backup := s.Path() + ".saved"
+	require.NoError(t, os.Rename(s.Path(), backup))
+	require.NoError(t, os.Mkdir(s.Path(), 0o700))
+
+	require.Error(t, s.SetIMAPPort(5678))
+	require.Equal(t, 1234, s.GetIMAPPort())
+	persisted, err := os.ReadFile(backup)
+	require.NoError(t, err)
+	require.Equal(t, previous, persisted)
+	entries, err := os.ReadDir(filepath.Dir(s.Path()))
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "failed update must remove its temporary file")
+
+	require.NoError(t, os.Remove(s.Path()))
+	require.NoError(t, os.Rename(backup, s.Path()))
+	require.NoError(t, s.SetIMAPPort(5678))
+	require.Equal(t, 5678, s.GetIMAPPort())
+
+	reopened, corrupt, err := vault.New(filepath.Dir(s.Path()), s.GetGluonCacheDir(), []byte("my secret key"), async.NoopPanicHandler{})
+	require.NoError(t, err)
+	require.NoError(t, corrupt)
+	require.Equal(t, 5678, reopened.GetIMAPPort())
+}
+
 func newVault(t *testing.T) *vault.Vault {
 	t.Helper()
 

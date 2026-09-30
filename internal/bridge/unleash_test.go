@@ -25,6 +25,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/unleash"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +34,7 @@ func Test_UnleashService(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, storeKey []byte) {
 		unleash.ModifyPollPeriodAndJitter(500*time.Millisecond, 0)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Initial startup assumes there is no cached feature flags.
 			require.Equal(t, b.GetFeatureFlagValue("test-1"), false)
 			require.Equal(t, b.GetFeatureFlagValue("test-2"), false)
@@ -59,7 +60,7 @@ func Test_UnleashService(t *testing.T) {
 		time.Sleep(time.Millisecond * 500)
 
 		// Second instance should have a feature flag cache file available. Therefore, all of the flags should evaluate to true on startup.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.Equal(t, b.GetFeatureFlagValue("test-1"), true)
 			require.Equal(t, b.GetFeatureFlagValue("test-2"), true)
 			require.Equal(t, b.GetFeatureFlagValue("test-3"), true)

@@ -29,6 +29,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	bridgePkg "github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/platform"
 	"github.com/ProtonMail/proton-bridge/v3/internal/updater"
@@ -41,7 +42,7 @@ import (
 
 func Test_Update_BetaEligible(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			updateCh, done := bridge.GetEvents(events.UpdateInstalled{})
 			defer done()
 
@@ -93,7 +94,7 @@ func Test_Update_BetaEligible(t *testing.T) {
 
 func Test_Update_Stable(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			updateCh, done := bridge.GetEvents(events.UpdateInstalled{})
 			defer done()
 
@@ -155,7 +156,7 @@ func Test_Update_Stable(t *testing.T) {
 
 func Test_Update_CurrentReleaseNewest(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			updateCh, done := bridge.GetEvents(events.UpdateNotAvailable{})
 			defer done()
 
@@ -213,7 +214,7 @@ func Test_Update_CurrentReleaseNewest(t *testing.T) {
 
 func Test_Update_NotRolledOutYet(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.SetUpdateChannel(updater.EarlyChannel))
 			bridge.SetCurrentVersionTest(semver.MustParse("2.0.0"))
 			require.NoError(t, bridge.SetRolloutPercentageTest(1.0))
@@ -269,7 +270,7 @@ func Test_Update_NotRolledOutYet(t *testing.T) {
 
 func Test_Update_CheckOSVersion_NoUpdate(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.SetAutoUpdate(true))
 			require.NoError(t, bridge.SetUpdateChannel(updater.StableChannel))
 
@@ -348,7 +349,7 @@ func Test_Update_CheckOSVersion_NoUpdate(t *testing.T) {
 
 func Test_Update_CheckOSVersion_HasUpdate(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.SetAutoUpdate(true))
 			require.NoError(t, bridge.SetUpdateChannel(updater.StableChannel))
 
@@ -462,7 +463,7 @@ func Test_Update_CheckOSVersion_HasUpdate(t *testing.T) {
 
 func Test_Update_UpdateFromMinVer_UpdateAvailable(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.SetAutoUpdate(true))
 			require.NoError(t, bridge.SetUpdateChannel(updater.StableChannel))
 
@@ -544,7 +545,7 @@ func Test_Update_UpdateFromMinVer_UpdateAvailable(t *testing.T) {
 // if we have an update, but we don't satisfy minVersion, a manual update to the highest possible version should be performed.
 func Test_Update_UpdateFromMinVer_NoCompatibleVersionForceManual(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.SetAutoUpdate(true))
 			require.NoError(t, bridge.SetUpdateChannel(updater.StableChannel))
 
@@ -627,7 +628,7 @@ func Test_Update_UpdateFromMinVer_NoCompatibleVersionForceManual(t *testing.T) {
 // nor do we satisfy the minVersion, we can't do anything in this case.
 func Test_Update_UpdateFromMinVer_NoCompatibleVersionForceManual_BetaMismatch(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridgePkg.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgePkg.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridgePkg.Bridge, mocks *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.SetAutoUpdate(true))
 			require.NoError(t, bridge.SetUpdateChannel(updater.StableChannel))
 

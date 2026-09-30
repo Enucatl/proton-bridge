@@ -27,6 +27,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +64,7 @@ func _TestBridge_SyncExistsWithErrorWhenTooManyFilesAreOpen(t *testing.T) { //no
 		})
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := bridge.GetEvents(events.SyncFailed{})
 			defer done()
 

@@ -1,4 +1,4 @@
-package bridge
+package mocks
 
 import (
 	"context"
@@ -10,38 +10,37 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/updater"
 	"go.uber.org/mock/gomock"
 )
 
 type Mocks struct {
-	ProxyCtl    *mocks.MockProxyController
-	TLSReporter *mocks.MockTLSReporter
+	ProxyCtl    *MockProxyController
+	TLSReporter *MockTLSReporter
 	TLSIssueCh  chan struct{}
 
 	Updater     *TestUpdater
-	Autostarter *mocks.MockAutostarter
+	Autostarter *MockAutostarter
 
-	CrashHandler *mocks.MockPanicHandler
-	Reporter     *mocks.MockReporter
-	Heartbeat    *mocks.MockHeartbeatManager
+	CrashHandler *MockPanicHandler
+	Reporter     *MockReporter
+	Heartbeat    *MockHeartbeatManager
 }
 
 func NewMocks(tb testing.TB, version, minAuto *semver.Version) *Mocks {
 	ctl := gomock.NewController(tb)
 
 	mocks := &Mocks{
-		ProxyCtl:    mocks.NewMockProxyController(ctl),
-		TLSReporter: mocks.NewMockTLSReporter(ctl),
+		ProxyCtl:    NewMockProxyController(ctl),
+		TLSReporter: NewMockTLSReporter(ctl),
 		TLSIssueCh:  make(chan struct{}),
 
 		Updater:     NewTestUpdater(version, minAuto),
-		Autostarter: mocks.NewMockAutostarter(ctl),
+		Autostarter: NewMockAutostarter(ctl),
 
-		CrashHandler: mocks.NewMockPanicHandler(ctl),
-		Reporter:     mocks.NewMockReporter(ctl),
-		Heartbeat:    mocks.NewMockHeartbeatManager(ctl),
+		CrashHandler: NewMockPanicHandler(ctl),
+		Reporter:     NewMockReporter(ctl),
+		Heartbeat:    NewMockHeartbeatManager(ctl),
 	}
 
 	// When getting the TLS issue channel, we want to return the test channel.

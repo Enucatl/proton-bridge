@@ -256,7 +256,9 @@ func newImpl(
 
 	user.identityService = useridentity.NewService(user.eventService, user, identityState, encVault)
 
-	user.telemetryService = telemetryservice.NewService(apiUser.ID, client, user.eventService)
+	if !constants.IsContainer {
+		user.telemetryService = telemetryservice.NewService(apiUser.ID, client, user.eventService)
+	}
 
 	user.smtpService = smtp.NewService(
 		apiUser.ID,
@@ -335,7 +337,9 @@ func newImpl(
 	}
 
 	// Start Telemetry Service
-	user.telemetryService.Start(ctx, user.serviceGroup)
+	if !constants.IsContainer {
+		user.telemetryService.Start(ctx, user.serviceGroup)
+	}
 
 	// Start Identity Service
 	user.identityService.Start(ctx, user.serviceGroup)
@@ -697,6 +701,10 @@ func (user *User) Close() {
 
 // IsTelemetryEnabled check if the telemetry is enabled or disabled for this user.
 func (user *User) IsTelemetryEnabled(ctx context.Context) bool {
+	if constants.IsContainer {
+		return false
+	}
+
 	return user.telemetryService.IsTelemetryEnabled(ctx)
 }
 

@@ -32,6 +32,7 @@ import (
 
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
+	"github.com/ProtonMail/proton-bridge/v3/pkg/atomicfile"
 	"github.com/bradenaw/juniper/parallel"
 	"github.com/bradenaw/juniper/xslices"
 	"github.com/google/uuid"
@@ -434,17 +435,11 @@ func (vault *Vault) modUnsafe(fn func(data *Data)) error {
 		return err
 	}
 
-	vault.enc = enc
-
-	tmpFile := vault.path + ".tmp"
-
-	if err := os.WriteFile(tmpFile, vault.enc, 0o600); err != nil {
+	if err := atomicfile.WriteFile(vault.path, enc); err != nil {
 		return fmt.Errorf("failed write new vault to disk: %w", err)
 	}
 
-	if err := os.Rename(tmpFile, vault.path); err != nil {
-		return fmt.Errorf("failed to overwrite old vault data: %w", err)
-	}
+	vault.enc = enc
 
 	return nil
 }
@@ -502,7 +497,7 @@ func initVault(path, gluonDir string, gcm cipher.AEAD) ([]byte, error) {
 		return nil, err
 	}
 
-	if err := os.WriteFile(path, enc, 0o600); err != nil {
+	if err := atomicfile.WriteFile(path, enc); err != nil {
 		return nil, err
 	}
 

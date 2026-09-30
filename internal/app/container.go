@@ -217,7 +217,7 @@ func runContainer(c *cli.Context) error {
 	}()
 	identifier := useragent.New()
 	return observability.WithObservability(loc, func(obs *observability.Service) error {
-		return withBridge(c, "", loc, version, identifier, obs, crashHandler, sentry.NewReporter(constants.FullAppName, identifier), v, jar, keychain.NewList(), func(b *bridge.Bridge, eventCh <-chan events.Event) error {
+		return withBridge(c, "", loc, version, identifier, obs, crashHandler, sentry.NullSentryReporter{}, v, jar, keychain.NewList(), func(b *bridge.Bridge, eventCh <-chan events.Event) error {
 			var frontendErr error
 			if c.Bool("cli") && ctx.Err() == nil {
 				frontendErr = bridgeCLI.New(b, restarter.New(""), eventCh, crashHandler, ctx.Done()).Loop()

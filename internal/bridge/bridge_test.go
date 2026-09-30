@@ -38,6 +38,7 @@ import (
 	"github.com/ProtonMail/go-proton-api/server/backend"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/certs"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/cookies"
@@ -78,7 +79,7 @@ func init() {
 
 func TestBridge_ConnStatus(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Get a stream of connection status events.
 			eventCh, done := bridge.GetEvents(events.ConnStatusUp{}, events.ConnStatusDown{})
 			defer done()
@@ -109,7 +110,7 @@ func TestBridge_ConnStatus(t *testing.T) {
 
 func TestBridge_TLSIssue(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			// Get a stream of TLS issue events.
 			tlsEventCh, done := bridge.GetEvents(events.TLSIssue{})
 			defer done()
@@ -139,7 +140,7 @@ func TestBridge_UserAgent(t *testing.T) {
 			calls = append(calls, call)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Set the platform to something other than the default.
 			bridge.SetCurrentPlatform("platform")
 
@@ -166,7 +167,7 @@ func TestBridge_UserAgent_Persistence(t *testing.T) {
 		_, _, err := s.CreateUser(otherUser, otherPassword)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			currentUserAgent := b.GetCurrentUserAgent()
 			require.Contains(t, currentUserAgent, useragent.DefaultUserAgent)
 
@@ -194,7 +195,7 @@ func TestBridge_UserAgent_Persistence(t *testing.T) {
 			require.Contains(t, b.GetCurrentUserAgent(), "MyFancyClient/0.1.2")
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			currentUserAgent := bridge.GetCurrentUserAgent()
 			require.Contains(t, currentUserAgent, "MyFancyClient/0.1.2")
 		})
@@ -208,7 +209,7 @@ func TestBridge_UserAgentFromUnknownClient(t *testing.T) {
 		_, _, err := s.CreateUser(otherUser, otherPassword)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			currentUserAgent := b.GetCurrentUserAgent()
 			require.Contains(t, currentUserAgent, useragent.DefaultUserAgent)
 
@@ -238,7 +239,7 @@ func TestBridge_UserAgentFromSMTPClient(t *testing.T) {
 		_, _, err := s.CreateUser(otherUser, otherPassword)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			currentUserAgent := b.GetCurrentUserAgent()
 			require.Contains(t, currentUserAgent, useragent.DefaultUserAgent)
 
@@ -289,7 +290,7 @@ func TestBridge_UserAgentFromIMAPID(t *testing.T) {
 		_, _, err := s.CreateUser(otherUser, otherPassword)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(b.LoginFull(ctx, otherUser, otherPassword, nil, nil)))
 
 			imapClient, err := eventuallyDial(fmt.Sprintf("%v:%v", constants.Host, b.GetIMAPPort()))
@@ -349,13 +350,13 @@ func TestBridge_Cookies(t *testing.T) {
 		})
 
 		// Start bridge and add a user so that API assigns us a session ID via cookie.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			_, err := bridge.LoginFull(context.Background(), username, password, nil, nil)
 			require.NoError(t, err)
 		})
 
 		// Start bridge again and check that it uses the same session ID.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(_ *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(_ *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// ...
 		})
 
@@ -371,7 +372,7 @@ func TestBridge_ForceUpdate(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
 		// Configure the fixture before Bridge starts issuing background API requests.
 		s.SetMinAppVersion(v2_4_0)
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Get a stream of update events.
 			updateCh, done := bridge.GetEvents(events.UpdateForced{})
 			defer done()
@@ -391,7 +392,7 @@ func TestBridge_BadVaultKey(t *testing.T) {
 		var userID string
 
 		// Login a user.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			newUserID, err := bridge.LoginFull(context.Background(), username, password, nil, nil)
 			require.NoError(t, err)
 
@@ -399,7 +400,7 @@ func TestBridge_BadVaultKey(t *testing.T) {
 		})
 
 		// Start bridge with the correct vault key -- it should load the users correctly.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.ElementsMatch(t, []string{userID}, bridge.GetUserIDs())
 		})
 
@@ -419,18 +420,18 @@ func TestBridge_BadVaultKey(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, before, after)
 			}
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				require.ElementsMatch(t, []string{userID}, b.GetUserIDs())
 			})
 			return
 		}
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, []byte("bad"), func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, []byte("bad"), func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.Empty(t, bridge.GetUserIDs())
 		})
 
 		// Start bridge with a nil vault key, the vault will be wiped and bridge will show no users.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, nil, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, nil, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.Empty(t, bridge.GetUserIDs())
 		})
 	})
@@ -440,7 +441,7 @@ func TestBridge_MissingGluonStore(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
 		var gluonDir string
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			_, err := bridge.LoginFull(context.Background(), username, password, nil, nil)
 			require.NoError(t, err)
 
@@ -455,7 +456,7 @@ func TestBridge_MissingGluonStore(t *testing.T) {
 		require.NoError(t, os.RemoveAll(gluonDir))
 
 		// Bridge starts but can't find the gluon store dir; there should be no error.
-		withBridgeWaitForServers(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(_ *bridge.Bridge, _ *bridge.Mocks) {
+		withBridgeWaitForServers(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(_ *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// ...
 		})
 	})
@@ -465,7 +466,7 @@ func TestBridge_MissingGluonDatabase(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
 		var gluonDir string
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			_, err := bridge.LoginFull(context.Background(), username, password, nil, nil)
 			require.NoError(t, err)
 
@@ -478,7 +479,7 @@ func TestBridge_MissingGluonDatabase(t *testing.T) {
 		require.NoError(t, os.RemoveAll(gluonDir))
 
 		// Bridge starts but can't find the gluon database dir; there should be no error.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(_ *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(_ *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// ...
 		})
 	})
@@ -492,7 +493,7 @@ func TestBridge_AddressWithoutKeys(t *testing.T) {
 		)
 		defer m.Close()
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Watch for sync finished event.
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
@@ -529,7 +530,7 @@ func TestBridge_AddressWithoutKeys(t *testing.T) {
 
 func TestBridge_FactoryReset(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// The settings should be their default values.
 			require.True(t, bridge.GetAutoUpdate())
 			require.Equal(t, updater.StableChannel, bridge.GetUpdateChannel())
@@ -558,7 +559,7 @@ func TestBridge_FactoryReset(t *testing.T) {
 			require.Equal(t, []string{}, getConnectedUserIDs(t, bridge))
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// The settings should be reset.
 			require.True(t, bridge.GetAutoUpdate())
 			require.Equal(t, updater.StableChannel, bridge.GetUpdateChannel())
@@ -568,7 +569,7 @@ func TestBridge_FactoryReset(t *testing.T) {
 
 func TestBridge_InitGluonDirectory(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			configDir, err := b.GetGluonDataDir()
 			require.NoError(t, err)
 
@@ -583,7 +584,7 @@ func TestBridge_InitGluonDirectory(t *testing.T) {
 
 func TestBridge_LoginFailed(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			failCh, done := chToType[events.Event, events.IMAPLoginFailed](bridge.GetEvents(events.IMAPLoginFailed{}))
 			defer done()
 
@@ -611,7 +612,7 @@ func TestBridge_ChangeCacheDirectory(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, labelID, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			newCacheDir := t.TempDir()
 			currentCacheDir := b.GetGluonCacheDir()
 			configDir, err := b.GetGluonDataDir()
@@ -667,20 +668,20 @@ func TestBridge_FeatureFlagStickyKey_Persistence(t *testing.T) {
 	var uuidTwo uuid.UUID
 
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			uuidOne = b.GetFeatureFlagStickyKey()
 		})
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.Equal(t, uuidOne, b.GetFeatureFlagStickyKey())
 		})
 	})
 
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, vaultKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			uuidTwo = b.GetFeatureFlagStickyKey()
 			require.NotEqual(t, uuidOne, uuidTwo)
 		})
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.Equal(t, uuidTwo, b.GetFeatureFlagStickyKey())
 		})
 	})
@@ -701,7 +702,7 @@ func TestBridge_ChangeAddressOrder(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, proton.InboxLabel, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Log the user in with its first address.
 			syncCh, done := chToType[events.Event, events.SyncFinished](b.GetEvents(events.SyncFinished{}))
 			defer done()
@@ -729,7 +730,7 @@ func TestBridge_ChangeAddressOrder(t *testing.T) {
 			require.NoError(t, c.OrderAddresses(ctx, proton.OrderAddressesReq{AddressIDs: []string{aliasID, addrID}}))
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// We should still see 10 messages in the inbox.
 			info, err := b.GetUserInfo(userID)
 			require.NoError(t, err)
@@ -773,15 +774,15 @@ func withEnv(t *testing.T, tests func(context.Context, *server.Server, *proton.N
 	netCtl := proton.NewNetCtl()
 
 	// Create a locations object to provide temporary locations for bridge data during the test.
-	locations := locations.New(bridge.NewTestLocationsProvider(t.TempDir()), "config-name")
+	locations := locations.New(bridgeMocks.NewTestLocationsProvider(t.TempDir()), "config-name")
 
 	// Run the tests.
 	tests(ctx, server, netCtl, locations, vaultKey)
 }
 
 // withMocks creates the mock objects used in the tests.
-func withMocks(t *testing.T, tests func(*bridge.Mocks)) {
-	mocks := bridge.NewMocks(t, v2_3_0, v2_3_0)
+func withMocks(t *testing.T, tests func(*bridgeMocks.Mocks)) {
+	mocks := bridgeMocks.NewMocks(t, v2_3_0, v2_3_0)
 	defer mocks.Close()
 
 	tests(mocks)
@@ -794,7 +795,7 @@ var testUIDValidityGenerator = imap.DefaultEpochUIDValidityGenerator()
 func withBridgeNoMocks(
 	ctx context.Context,
 	t *testing.T,
-	mocks *bridge.Mocks,
+	mocks *bridgeMocks.Mocks,
 	apiURL string,
 	netCtl *proton.NetCtl,
 	locator bridge.Locator,
@@ -826,7 +827,7 @@ func withBridgeNoMocks(
 	}
 
 	// Create a new cookie jar.
-	cookieJar, err := cookies.NewCookieJar(bridge.NewTestCookieJar(), vault)
+	cookieJar, err := cookies.NewCookieJar(bridgeMocks.NewTestCookieJar(), vault)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, cookieJar.PersistCookies()) }()
 
@@ -890,9 +891,9 @@ func withBridge(
 	netCtl *proton.NetCtl,
 	locator bridge.Locator,
 	vaultKey []byte,
-	tests func(*bridge.Bridge, *bridge.Mocks),
+	tests func(*bridge.Bridge, *bridgeMocks.Mocks),
 ) {
-	withMocks(t, func(mocks *bridge.Mocks) {
+	withMocks(t, func(mocks *bridgeMocks.Mocks) {
 		withBridgeNoMocks(ctx, t, mocks, apiURL, netCtl, locator, vaultKey, func(bridge *bridge.Bridge) {
 			tests(bridge, mocks)
 		}, false)
@@ -907,9 +908,9 @@ func withBridgeWaitForServers(
 	netCtl *proton.NetCtl,
 	locator bridge.Locator,
 	vaultKey []byte,
-	tests func(*bridge.Bridge, *bridge.Mocks),
+	tests func(*bridge.Bridge, *bridgeMocks.Mocks),
 ) {
-	withMocks(t, func(mocks *bridge.Mocks) {
+	withMocks(t, func(mocks *bridgeMocks.Mocks) {
 		withBridgeNoMocks(ctx, t, mocks, apiURL, netCtl, locator, vaultKey, func(bridge *bridge.Bridge) {
 			tests(bridge, mocks)
 		}, true)

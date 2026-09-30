@@ -8,8 +8,8 @@ export GOOS=linux GOARCH=amd64 CGO_ENABLED=1 GOTOOLCHAIN=local
 export GOFLAGS='-mod=readonly -tags=container,netgo,osusergo,sqlite_omit_load_extension'
 mkdir -p headless-dist
 go list -deps ./cmd/proton-bridge-headless > headless-dist/dependencies.txt
-if grep -E '/(frontend/grpc|frontend/bridge-gui|fido|focus/proto|autostart)(/|$)|go-libfido2|go-ctap|go-keychain|godbus|docker-credential-helpers/(pass|secretservice)|therecipe/qt|0xAX/notificator|google.golang.org/grpc' headless-dist/dependencies.txt; then
-    echo 'Forbidden desktop dependency in headless binary' >&2
+if grep -E '/(frontend/grpc|frontend/bridge-gui|fido|focus/proto|autostart|bridge/mocks)(/|$)|go-libfido2|go-ctap|go-keychain|godbus|docker-credential-helpers/(pass|secretservice)|therecipe/qt|0xAX/notificator|google.golang.org/grpc|go.uber.org/mock' headless-dist/dependencies.txt; then
+    echo 'Forbidden desktop or test dependency in headless binary' >&2
     exit 1
 fi
 prefix=github.com/ProtonMail/proton-bridge/v3/internal/constants

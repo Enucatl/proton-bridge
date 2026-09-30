@@ -421,13 +421,15 @@ func (bridge *Bridge) init(tlsReporter TLSReporter) error {
 		})
 	})
 
-	// Publish a raise event if the focus service is called.
-	bridge.tasks.Once(func(ctx context.Context) {
-		async.RangeContext(ctx, bridge.focusService.GetRaiseCh(), func(struct{}) {
-			logPkg.Info("Focus service requested raise")
-			bridge.publish(events.Raise{})
+	if !constants.IsContainer {
+		// Publish a raise event if the focus service is called.
+		bridge.tasks.Once(func(ctx context.Context) {
+			async.RangeContext(ctx, bridge.focusService.GetRaiseCh(), func(struct{}) {
+				logPkg.Info("Focus service requested raise")
+				bridge.publish(events.Raise{})
+			})
 		})
-	})
+	}
 
 	// Handle any IMAP events that are forwarded to the bridge from gluon.
 	bridge.tasks.Once(func(ctx context.Context) {

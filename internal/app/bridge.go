@@ -24,13 +24,13 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/ProtonMail/gluon/imap"
+	"github.com/ProtonMail/gluon/reporter"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/crash"
 	"github.com/ProtonMail/proton-bridge/v3/internal/dialer"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
-	"github.com/ProtonMail/proton-bridge/v3/internal/sentry"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
 	"github.com/ProtonMail/proton-bridge/v3/internal/useragent"
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
@@ -51,7 +51,7 @@ func withBridge(
 	identifier *useragent.UserAgent,
 	obsService *observability.Service,
 	crashHandler *crash.Handler,
-	reporter *sentry.Reporter,
+	reporter reporter.Reporter,
 	vault *vault.Vault,
 	cookieJar http.CookieJar,
 	keychains *keychain.List,
@@ -71,9 +71,13 @@ func withBridge(
 
 	// Create the underlying dialer used by the bridge.
 	// It only connects to trusted servers and reports any untrusted servers it finds.
+	var tlsReporter dialer.Reporter
+	if !constants.IsContainer {
+		tlsReporter = dialer.NewTLSReporter(constants.APIHost, constants.AppVersion(version.Original()), identifier, dialer.TrustedAPIPins)
+	}
 	pinningDialer := dialer.NewPinningTLSDialer(
 		dialer.NewBasicTLSDialer(constants.APIHost),
-		dialer.NewTLSReporter(constants.APIHost, constants.AppVersion(version.Original()), identifier, dialer.TrustedAPIPins),
+		tlsReporter,
 		dialer.NewTLSPinChecker(dialer.TrustedAPIPins),
 	)
 

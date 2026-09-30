@@ -21,10 +21,35 @@ package observability
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/go-proton-api"
+	"github.com/stretchr/testify/require"
 )
+
+func TestContainerDoesNotCollectMetricsOrStartWorkers(t *testing.T) {
+	wantErr := errors.New("callback error")
+	// Nil locations ensures container setup never accesses the metric cache.
+	err := WithObservability(nil, func(service *Service) error {
+		service.Initialize(context.Background(), async.NoopPanicHandler{})
+		service.Run(nil)
+		service.RegisterUserClient("test", nil, nil, "paid")
+		metric := proton.ObservabilityMetric{Name: "test", ShouldCache: true}
+		service.AddMetrics(metric)
+		service.AddDistinctMetrics(SyncError, metric)
+		service.AddTimeLimitedMetric(SyncError, metric)
+		require.Empty(t, service.GetEmailClient())
+		service.ModifyHeartbeatInterval(0)
+		service.DeregisterUserClient("test")
+		service.Stop()
+		// No context, channels, client map, metrics, logger, cache path or ticker.
+		require.Equal(t, &Service{}, service)
+		return wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
+}
 
 func TestContainerDoesNotSendMetrics(t *testing.T) {
 	service := NewTestService()

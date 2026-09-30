@@ -104,6 +104,10 @@ func NewTestService() *Service {
 }
 
 func WithObservability(locations *locations.Locations, fn func(service *Service) error) error {
+	if constants.IsContainer {
+		return fn(new(Service))
+	}
+
 	service := newService()
 
 	cacheDir, err := locations.ProvideObservabilityMetricsCachePath()
@@ -125,6 +129,10 @@ func WithObservability(locations *locations.Locations, fn func(service *Service)
 // Initialize sets up the observability Service. If not initialized, the service will remain inactive and emit no metrics.
 // Should exclusively be called during bridge set-up.
 func (s *Service) Initialize(ctx context.Context, panicHandler async.PanicHandler) {
+	if constants.IsContainer {
+		return
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 
 	s.ctx = ctx
@@ -142,6 +150,10 @@ func (s *Service) Initialize(ctx context.Context, panicHandler async.PanicHandle
 // Run starts the observability service goroutine.
 // The function also sets some utility functions to a helper struct aimed at differentiating the amount of users sending metric updates.
 func (s *Service) Run(settingsGetter settingsGetter) {
+	if constants.IsContainer {
+		return
+	}
+
 	if s.log != nil {
 		s.log.Info("Starting service")
 	}
@@ -361,6 +373,10 @@ func (s *Service) addMetricsIfClients(metric ...proton.ObservabilityMetric) {
 }
 
 func (s *Service) RegisterUserClient(userID string, protonClient *proton.Client, telemetryService *telemetry.Service, userPlan string) {
+	if constants.IsContainer {
+		return
+	}
+
 	s.log.Info("Registering user client, ID:", userID)
 
 	s.withUserClientStoreLock(func() {
@@ -377,6 +393,10 @@ func (s *Service) RegisterUserClient(userID string, protonClient *proton.Client,
 }
 
 func (s *Service) DeregisterUserClient(userID string) {
+	if constants.IsContainer {
+		return
+	}
+
 	s.log.Info("De-registering user client, ID:", userID)
 
 	s.withUserClientStoreLock(func() {
@@ -385,6 +405,10 @@ func (s *Service) DeregisterUserClient(userID string) {
 }
 
 func (s *Service) Stop() {
+	if constants.IsContainer {
+		return
+	}
+
 	s.log.Info("Stopping service")
 
 	s.cancel()
@@ -429,6 +453,10 @@ func ModifyThrottlePeriod(duration time.Duration) {
 }
 
 func (s *Service) AddMetrics(metrics ...proton.ObservabilityMetric) {
+	if constants.IsContainer {
+		return
+	}
+
 	s.addMetrics(metrics...)
 }
 
@@ -437,6 +465,10 @@ func (s *Service) AddMetrics(metrics ...proton.ObservabilityMetric) {
 // As the binning interval is what allows us to do this we
 // should not send these if there are no logged-in users at that moment.
 func (s *Service) AddDistinctMetrics(errType DistinctionMetricTypeEnum, metrics ...proton.ObservabilityMetric) {
+	if constants.IsContainer {
+		return
+	}
+
 	metrics = s.distinctionUtility.generateDistinctMetrics(errType, metrics...)
 	s.addMetricsIfClients(metrics...)
 }
@@ -444,6 +476,10 @@ func (s *Service) AddDistinctMetrics(errType DistinctionMetricTypeEnum, metrics 
 // AddTimeLimitedMetric - schedules a metric to be sent if a metric of the same type has not been sent within some interval.
 // The interval is defined in the distinction utility.
 func (s *Service) AddTimeLimitedMetric(metricType DistinctionMetricTypeEnum, metric proton.ObservabilityMetric) {
+	if constants.IsContainer {
+		return
+	}
+
 	if !s.distinctionUtility.checkAndUpdateLastSentMap(metricType) {
 		return
 	}
@@ -452,11 +488,19 @@ func (s *Service) AddTimeLimitedMetric(metricType DistinctionMetricTypeEnum, met
 }
 
 func (s *Service) GetEmailClient() string {
+	if constants.IsContainer {
+		return ""
+	}
+
 	return s.distinctionUtility.getEmailClientUserAgent()
 }
 
 // ModifyHeartbeatInterval - should only be used for testing. Resets the heartbeat ticker.
 func (s *Service) ModifyHeartbeatInterval(duration time.Duration) {
+	if constants.IsContainer {
+		return
+	}
+
 	s.distinctionUtility.heartbeatTicker.Reset(duration)
 }
 

@@ -25,6 +25,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/bradenaw/juniper/iterator"
@@ -46,7 +47,7 @@ func TestBridge_Refresh(t *testing.T) {
 		}
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](b.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -58,7 +59,7 @@ func TestBridge_Refresh(t *testing.T) {
 
 		var uidValidities = make(map[string]uint32, len(names))
 		// If we then connect an IMAP client, it should see all the labels with UID validity of 1.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			mocks.Reporter.EXPECT().ReportMessageWithContext(gomock.Any(), gomock.Any()).AnyTimes()
 
 			info, err := b.GetUserInfo(userID)
@@ -81,7 +82,7 @@ func TestBridge_Refresh(t *testing.T) {
 		require.NoError(t, s.RefreshUser(userID, proton.RefreshAll))
 
 		// If we then connect an IMAP client, it should see all the labels with UID validity of 1.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			mocks.Reporter.EXPECT().ReportMessageWithContext(gomock.Any(), gomock.Any()).AnyTimes()
 
 			// Wait for refresh event first
@@ -96,7 +97,7 @@ func TestBridge_Refresh(t *testing.T) {
 		})
 
 		// After resync, the IMAP client should see all the labels with UID validity of 2.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			mocks.Reporter.EXPECT().ReportMessageWithContext(gomock.Any(), gomock.Any()).AnyTimes()
 
 			info, err := b.GetUserInfo(userID)

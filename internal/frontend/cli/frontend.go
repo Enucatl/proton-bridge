@@ -74,24 +74,24 @@ func New(
 	})
 
 	// Clear commands.
-	clearCmd := &ishell.Cmd{
-		Name:    "clear",
-		Help:    "remove stored accounts and preferences. (alias: cl)",
-		Aliases: []string{"cl"},
-	}
-	clearCmd.AddCmd(&ishell.Cmd{
-		Name:    "accounts",
-		Help:    "remove all accounts from keychain. (aliases: a, k, keychain)",
-		Aliases: []string{"a", "k", "keychain"},
-		Func:    fe.deleteAccounts,
-	})
-	clearCmd.AddCmd(&ishell.Cmd{
-		Name:    "everything",
-		Help:    "remove everything",
-		Aliases: []string{"a", "k", "keychain"},
-		Func:    fe.deleteEverything,
-	})
 	if !constants.IsContainer {
+		clearCmd := &ishell.Cmd{
+			Name:    "clear",
+			Help:    "remove stored accounts and preferences. (alias: cl)",
+			Aliases: []string{"cl"},
+		}
+		clearCmd.AddCmd(&ishell.Cmd{
+			Name:    "accounts",
+			Help:    "remove all accounts from keychain. (aliases: a, k, keychain)",
+			Aliases: []string{"a", "k", "keychain"},
+			Func:    fe.deleteAccounts,
+		})
+		clearCmd.AddCmd(&ishell.Cmd{
+			Name:    "everything",
+			Help:    "remove everything",
+			Aliases: []string{"a", "k", "keychain"},
+			Func:    fe.deleteEverything,
+		})
 		fe.AddCmd(clearCmd)
 	}
 
@@ -113,33 +113,29 @@ func New(
 		Help: "change the location of the encrypted message cache",
 		Func: fe.setGluonLocation,
 	})
-	changeCmd.AddCmd(&ishell.Cmd{
-		Name: "imap-port",
-		Help: "change port number of IMAP server.",
-		Func: fe.changeIMAPPort,
-	})
-	changeCmd.AddCmd(&ishell.Cmd{
-		Name: "smtp-port",
-		Help: "change port number of SMTP server.",
-		Func: fe.changeSMTPPort,
-	})
-	changeCmd.AddCmd(&ishell.Cmd{
-		Name:    "imap-security",
-		Help:    "change IMAP SSL settings servers.(alias: ssl-imap, starttls-imap)",
-		Aliases: []string{"ssl-imap", "starttls-imap"},
-		Func:    fe.changeIMAPSecurity,
-	})
-	changeCmd.AddCmd(&ishell.Cmd{
-		Name:    "smtp-security",
-		Help:    "change SMTP SSL settings servers.(alias: ssl-smtp, starttls-smtp)",
-		Aliases: []string{"ssl-smtp", "starttls-smtp"},
-		Func:    fe.changeSMTPSecurity,
-	})
-	if constants.IsContainer {
-		changeCmd.DeleteCmd("imap-port")
-		changeCmd.DeleteCmd("smtp-port")
-		changeCmd.DeleteCmd("imap-security")
-		changeCmd.DeleteCmd("smtp-security")
+	if !constants.IsContainer {
+		changeCmd.AddCmd(&ishell.Cmd{
+			Name: "imap-port",
+			Help: "change port number of IMAP server.",
+			Func: fe.changeIMAPPort,
+		})
+		changeCmd.AddCmd(&ishell.Cmd{
+			Name: "smtp-port",
+			Help: "change port number of SMTP server.",
+			Func: fe.changeSMTPPort,
+		})
+		changeCmd.AddCmd(&ishell.Cmd{
+			Name:    "imap-security",
+			Help:    "change IMAP SSL settings servers.(alias: ssl-imap, starttls-imap)",
+			Aliases: []string{"ssl-imap", "starttls-imap"},
+			Func:    fe.changeIMAPSecurity,
+		})
+		changeCmd.AddCmd(&ishell.Cmd{
+			Name:    "smtp-security",
+			Help:    "change SMTP SSL settings servers.(alias: ssl-smtp, starttls-smtp)",
+			Aliases: []string{"ssl-smtp", "starttls-smtp"},
+			Func:    fe.changeSMTPSecurity,
+		})
 	}
 	fe.AddCmd(changeCmd)
 
@@ -200,13 +196,12 @@ func New(
 		Help: "export the TLS certificate used by Bridge",
 		Func: fe.exportTLSCerts,
 	})
-	certCmd.AddCmd(&ishell.Cmd{
-		Name: "import",
-		Help: "import a TLS certificate to be used by Bridge",
-		Func: fe.importTLSCerts,
-	})
-	if constants.IsContainer {
-		certCmd.DeleteCmd("import")
+	if !constants.IsContainer {
+		certCmd.AddCmd(&ishell.Cmd{
+			Name: "import",
+			Help: "import a TLS certificate to be used by Bridge",
+			Func: fe.importTLSCerts,
+		})
 	}
 	fe.AddCmd(certCmd)
 
@@ -228,46 +223,46 @@ func New(
 	fe.AddCmd(allMailCmd)
 
 	// Updates commands.
-	updatesCmd := &ishell.Cmd{
-		Name: "updates",
-		Help: "manage bridge updates",
-	}
-	updatesCmd.AddCmd(&ishell.Cmd{
-		Name: "check",
-		Help: "check for Bridge updates",
-		Func: fe.checkUpdates,
-	})
-	autoUpdatesCmd := &ishell.Cmd{
-		Name: "autoupdates",
-		Help: "manage bridge updates",
-	}
-	updatesCmd.AddCmd(autoUpdatesCmd)
-	autoUpdatesCmd.AddCmd(&ishell.Cmd{
-		Name: "enable",
-		Help: "automatically keep bridge up to date",
-		Func: fe.enableAutoUpdates,
-	})
-	autoUpdatesCmd.AddCmd(&ishell.Cmd{
-		Name: "disable",
-		Help: "require bridge to be manually updated",
-		Func: fe.disableAutoUpdates,
-	})
-	updatesChannelCmd := &ishell.Cmd{
-		Name: "channel",
-		Help: "switch updates channel",
-	}
-	updatesCmd.AddCmd(updatesChannelCmd)
-	updatesChannelCmd.AddCmd(&ishell.Cmd{
-		Name: "early",
-		Help: "switch to the early-access updates channel",
-		Func: fe.selectEarlyChannel,
-	})
-	updatesChannelCmd.AddCmd(&ishell.Cmd{
-		Name: "stable",
-		Help: "switch to the stable updates channel",
-		Func: fe.selectStableChannel,
-	})
 	if !constants.IsContainer {
+		updatesCmd := &ishell.Cmd{
+			Name: "updates",
+			Help: "manage bridge updates",
+		}
+		updatesCmd.AddCmd(&ishell.Cmd{
+			Name: "check",
+			Help: "check for Bridge updates",
+			Func: fe.checkUpdates,
+		})
+		autoUpdatesCmd := &ishell.Cmd{
+			Name: "autoupdates",
+			Help: "manage bridge updates",
+		}
+		updatesCmd.AddCmd(autoUpdatesCmd)
+		autoUpdatesCmd.AddCmd(&ishell.Cmd{
+			Name: "enable",
+			Help: "automatically keep bridge up to date",
+			Func: fe.enableAutoUpdates,
+		})
+		autoUpdatesCmd.AddCmd(&ishell.Cmd{
+			Name: "disable",
+			Help: "require bridge to be manually updated",
+			Func: fe.disableAutoUpdates,
+		})
+		updatesChannelCmd := &ishell.Cmd{
+			Name: "channel",
+			Help: "switch updates channel",
+		}
+		updatesCmd.AddCmd(updatesChannelCmd)
+		updatesChannelCmd.AddCmd(&ishell.Cmd{
+			Name: "early",
+			Help: "switch to the early-access updates channel",
+			Func: fe.selectEarlyChannel,
+		})
+		updatesChannelCmd.AddCmd(&ishell.Cmd{
+			Name: "stable",
+			Help: "switch to the stable updates channel",
+			Func: fe.selectStableChannel,
+		})
 		fe.AddCmd(updatesCmd)
 	}
 
@@ -349,21 +344,21 @@ func New(
 	fe.AddCmd(badEventCmd)
 
 	// Telemetry commands
-	telemetryCmd := &ishell.Cmd{
-		Name: "telemetry",
-		Help: "choose whether usage diagnostics are collected or not",
-	}
-	telemetryCmd.AddCmd(&ishell.Cmd{
-		Name: "enable",
-		Help: "usage diagnostics collection will be enabled",
-		Func: fe.enableTelemetry,
-	})
-	telemetryCmd.AddCmd(&ishell.Cmd{
-		Name: "disable",
-		Help: "usage diagnostics collection will be disabled",
-		Func: fe.disableTelemetry,
-	})
 	if !constants.IsContainer {
+		telemetryCmd := &ishell.Cmd{
+			Name: "telemetry",
+			Help: "choose whether usage diagnostics are collected or not",
+		}
+		telemetryCmd.AddCmd(&ishell.Cmd{
+			Name: "enable",
+			Help: "usage diagnostics collection will be enabled",
+			Func: fe.enableTelemetry,
+		})
+		telemetryCmd.AddCmd(&ishell.Cmd{
+			Name: "disable",
+			Help: "usage diagnostics collection will be disabled",
+			Func: fe.disableTelemetry,
+		})
 		fe.AddCmd(telemetryCmd)
 	}
 

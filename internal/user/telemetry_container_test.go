@@ -22,6 +22,10 @@ package user
 import (
 	"context"
 	"testing"
+
+	"github.com/ProtonMail/go-proton-api"
+	"github.com/ProtonMail/go-proton-api/server"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContainerDoesNotUploadTelemetry(t *testing.T) {
@@ -29,4 +33,16 @@ func TestContainerDoesNotUploadTelemetry(t *testing.T) {
 	if err := new(User).SendTelemetry(context.Background(), []byte("invalid telemetry")); err != nil {
 		t.Fatal(err)
 	}
+	require.False(t, new(User).IsTelemetryEnabled(context.Background()))
+}
+
+func TestContainerUserHasNoTelemetryService(t *testing.T) {
+	withAPI(t, context.Background(), func(ctx context.Context, s *server.Server, m *proton.Manager) {
+		withAccount(t, s, "username", "password", nil, func(string, []string) {
+			withUser(t, ctx, s, m, "username", "password", func(user *User) {
+				require.Nil(t, user.telemetryService)
+				require.False(t, user.IsTelemetryEnabled(ctx))
+			})
+		})
+	})
 }

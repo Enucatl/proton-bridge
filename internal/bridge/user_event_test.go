@@ -36,6 +36,7 @@ import (
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/user"
@@ -64,7 +65,7 @@ func TestBridge_User_RefreshEvent(t *testing.T) {
 			messageIDs = createNumMessages(ctx, t, c, addrID, labelID, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 		})
 
@@ -75,7 +76,7 @@ func TestBridge_User_RefreshEvent(t *testing.T) {
 
 		require.NoError(t, s.RefreshUser(userID, proton.RefreshMail))
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, closeCh := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 
 			// There are is a possibility of 2 SyncFinished events, one which is fired when
@@ -97,7 +98,7 @@ func TestBridge_User_RefreshEvent(t *testing.T) {
 			userContinueEventProcess(ctx, t, s, bridge)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			withClient(ctx, t, s, "user", password, func(ctx context.Context, c *proton.Client) {
 				createNumMessages(ctx, t, c, addrID, labelID, 10)
 			})
@@ -153,7 +154,7 @@ func test_badMessage_badEvent(userFeedback func(t *testing.T, ctx context.Contex
 				createNumMessages(ctx, t, c, addrID, labelID, 10)
 			})
 
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 				mocks.Reporter.EXPECT().ReportMessageWithContext("Failed to handle event", gomock.Any()).MinTimes(1)
 				userLoginAndSync(ctx, t, bridge, "user", password)
 
@@ -208,7 +209,7 @@ func TestBridge_User_BadMessage_NoBadEvent(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, proton.InboxLabel, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			var messageIDs []string
@@ -250,7 +251,7 @@ func TestBridge_User_SameMessageLabelCreated_NoBadEvent(t *testing.T) {
 			messageIDs = createNumMessages(ctx, t, c, addrID, proton.InboxLabel, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			labelID, err := s.CreateLabel(userID, "folder", "", proton.LabelTypeFolder)
@@ -279,7 +280,7 @@ func TestBridge_User_MessageLabelDeleted_NoBadEvent(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, labelID, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			// Create and delete 10 more messages for the user, generating delete events.
@@ -318,7 +319,7 @@ func TestBridge_User_AddressEvents_NoBadEvent(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, proton.InboxLabel, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			addrID, err = s.CreateAddress(userID, "other@pm.me", password, true)
@@ -333,7 +334,7 @@ func TestBridge_User_AddressEvents_NoBadEvent(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, s.RemoveAddress(userID, otherID))
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userContinueEventProcess(ctx, t, s, bridge)
 
 			require.NoError(t, s.CreateAddressKey(userID, addrID, password))
@@ -351,7 +352,7 @@ func TestBridge_User_AddressEvents_BYOEAddressAdded(t *testing.T) {
 		userID, addrID, err := s.CreateUser("user", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			// Create an additional proton address
@@ -396,7 +397,7 @@ func TestBridge_User_AddressEvents_ExternalAddressSendChanged(t *testing.T) {
 		userID, _, err := s.CreateUser("user", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			// Create an additional external address.
@@ -432,11 +433,11 @@ func TestBridge_User_AddressEventUpdatedForAddressThatDoesNotExist_NoBadEvent(t 
 		userID, _, err := s.CreateUser("user", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			_, err := s.CreateAddressAsUpdate(userID, "another@pm.me", password)
 			require.NoError(t, err)
 			userContinueEventProcess(ctx, t, s, bridge)
@@ -466,7 +467,7 @@ func TestBridge_User_Network_NoBadEvents(t *testing.T) {
 		_, addrID, err := s.CreateUser("user", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 
 			// Create 10 more messages for the user, generating events.
@@ -507,7 +508,7 @@ func TestBridge_User_DropConn_NoBadEvent(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, proton.InboxLabel, 10)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			var count int32
 			// The first 10 times bridge attempts to sync any of the messages, drop the connection.
 			s.AddStatusHook(func(req *http.Request) (int, bool) {
@@ -552,7 +553,7 @@ func TestBridge_User_UpdateDraft(t *testing.T) {
 		require.NoError(t, err)
 
 		// Initially sync the user.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 		})
 
@@ -585,7 +586,7 @@ func TestBridge_User_UpdateDraft(t *testing.T) {
 			require.Empty(t, draft.ReplyTos)
 
 			// Process those events
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				userContinueEventProcess(ctx, t, s, bridge)
 			})
 
@@ -611,7 +612,7 @@ func TestBridge_User_UpdateDraftAndCreateOtherMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		// Initially sync the user.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 		})
 
@@ -643,7 +644,7 @@ func TestBridge_User_UpdateDraftAndCreateOtherMessage(t *testing.T) {
 			require.NoError(t, err)
 
 			// Process those events
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				userContinueEventProcess(ctx, t, s, bridge)
 			})
 
@@ -671,7 +672,7 @@ func TestBridge_User_UpdateDraftAndCreateOtherMessage(t *testing.T) {
 			require.NoError(t, err)
 
 			// Process those events.
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				userContinueEventProcess(ctx, t, s, bridge)
 			})
 
@@ -679,7 +680,7 @@ func TestBridge_User_UpdateDraftAndCreateOtherMessage(t *testing.T) {
 			require.NoError(t, c.MarkMessagesUnread(ctx, res[0].MessageID))
 
 			// Process those events.
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				userContinueEventProcess(ctx, t, s, bridge)
 			})
 		})
@@ -693,7 +694,7 @@ func TestBridge_User_SendDraftRemoveDraftFlag(t *testing.T) {
 		require.NoError(t, err)
 
 		// Initially sync the user.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			userLoginAndSync(ctx, t, bridge, "user", password)
 		})
 
@@ -726,7 +727,7 @@ func TestBridge_User_SendDraftRemoveDraftFlag(t *testing.T) {
 			require.NoError(t, err)
 
 			// Process those events
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				userContinueEventProcess(ctx, t, s, bridge)
 
 				info, err := bridge.QueryUserInfo("user")
@@ -765,7 +766,7 @@ func TestBridge_User_SendDraftRemoveDraftFlag(t *testing.T) {
 			}
 
 			// Process those events; the draft will move to the sent folder and lose the draft flag.
-			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+			withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 				userContinueEventProcess(ctx, t, s, bridge)
 
 				info, err := bridge.QueryUserInfo("user")
@@ -795,7 +796,7 @@ func TestBridge_User_DisableEnableAddress(t *testing.T) {
 		aliasID, err := s.CreateAddress(userID, "alias@"+s.GetDomain(), password, true)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(bridge.LoginFull(ctx, "user", password, nil, nil)))
 
 			// Initially we should list the address.
@@ -809,7 +810,7 @@ func TestBridge_User_DisableEnableAddress(t *testing.T) {
 			require.NoError(t, c.DisableAddress(ctx, aliasID))
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Eventually we shouldn't list the address.
 			require.Eventually(t, func() bool {
 				info, err := bridge.QueryUserInfo("user")
@@ -824,7 +825,7 @@ func TestBridge_User_DisableEnableAddress(t *testing.T) {
 			require.NoError(t, c.EnableAddress(ctx, aliasID))
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Eventually we should list the address.
 			require.Eventually(t, func() bool {
 				info, err := bridge.QueryUserInfo("user")
@@ -851,7 +852,7 @@ func TestBridge_User_CreateDisabledAddress(t *testing.T) {
 			require.NoError(t, c.DisableAddress(ctx, aliasID))
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(bridge.LoginFull(ctx, "user", password, nil, nil)))
 
 			// Initially we shouldn't list the address.
@@ -864,7 +865,7 @@ func TestBridge_User_CreateDisabledAddress(t *testing.T) {
 
 func TestBridge_User_HandleParentLabelRename(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, storeKey []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(bridge.LoginFull(ctx, username, password, nil, nil)))
 
 			info, err := bridge.QueryUserInfo(username)

@@ -30,6 +30,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
@@ -100,7 +101,7 @@ func withSyncEventIDBridge(
 ) {
 	t.Helper()
 
-	withBridge(ctx, t, apiURL, netCtl, locator, vaultKey, func(b *bridge.Bridge, mocks *bridge.Mocks) {
+	withBridge(ctx, t, apiURL, netCtl, locator, vaultKey, func(b *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 		mocks.Reporter.EXPECT().ReportMessageWithContext(gomock.Any(), gomock.Any()).AnyTimes()
 		fn(b)
 	})

@@ -29,7 +29,7 @@ import (
 
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/gopenpgp/v2/crypto"
-	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/cookies"
 	"github.com/ProtonMail/proton-bridge/v3/internal/legacy/credentials"
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
@@ -109,7 +109,7 @@ func TestKeychainMigration(t *testing.T) {
 		))
 	}
 
-	locations := locations.New(bridge.NewTestLocationsProvider(tmpDir), "config-name")
+	locations := locations.New(bridgeMocks.NewTestLocationsProvider(tmpDir), "config-name")
 	settingsFolder, err := locations.ProvideSettingsPath()
 	require.NoError(t, err)
 
@@ -172,7 +172,7 @@ func TestUserMigration(t *testing.T) {
 	))
 
 	tmpDir := t.TempDir()
-	locations := locations.New(bridge.NewTestLocationsProvider(tmpDir), "config-name")
+	locations := locations.New(bridgeMocks.NewTestLocationsProvider(tmpDir), "config-name")
 	settingsFolder, err := locations.ProvideSettingsPath()
 	require.NoError(t, err)
 	require.NoError(t, vault.SetHelper(settingsFolder, "mock"))

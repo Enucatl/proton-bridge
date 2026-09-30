@@ -35,6 +35,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/sentry"
@@ -67,7 +68,7 @@ func TestBridge_Sync(t *testing.T) {
 		var total uint64
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -85,7 +86,7 @@ func TestBridge_Sync(t *testing.T) {
 		})
 
 		// If we then connect an IMAP client, it should see all the messages.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			info, err := b.GetUserInfo(userID)
 			require.NoError(t, err)
 			require.True(t, info.State == bridge.Connected)
@@ -101,7 +102,7 @@ func TestBridge_Sync(t *testing.T) {
 		})
 
 		// Now let's remove the user and simulate a network error.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.DeleteUser(ctx, userID))
 		})
 
@@ -109,7 +110,7 @@ func TestBridge_Sync(t *testing.T) {
 		netCtl.SetReadLimit(2 * total / 3)
 
 		// Login the user; its sync should fail.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			{
 				syncCh, done := chToType[events.Event, events.SyncFailed](b.GetEvents(events.SyncFailed{}))
 				defer done()
@@ -171,7 +172,7 @@ func _TestBridge_Sync_BadMessage(t *testing.T) { //nolint:unused
 
 		// The initial user should be fully synced and should skip the bad message.
 		// We should report the bad message to sentry.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			mocks.Reporter.EXPECT().ReportMessageWithContext("Failed to build message (sync)", gomock.Any())
 
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
@@ -184,7 +185,7 @@ func _TestBridge_Sync_BadMessage(t *testing.T) { //nolint:unused
 		})
 
 		// If we then connect an IMAP client, it should see the good message but not the bad one.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			info, err := b.GetUserInfo(userID)
 			require.NoError(t, err)
 			require.True(t, info.State == bridge.Connected)
@@ -240,7 +241,7 @@ func TestBridge_SyncWithOngoingEvents(t *testing.T) {
 		var total uint64
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -254,7 +255,7 @@ func TestBridge_SyncWithOngoingEvents(t *testing.T) {
 		})
 
 		// Now let's remove the user and stop the network at 2/3 of the data.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, bridge.DeleteUser(ctx, userID))
 		})
 
@@ -262,7 +263,7 @@ func TestBridge_SyncWithOngoingEvents(t *testing.T) {
 		netCtl.SetReadLimit(2 * total / 3)
 
 		// Login the user; its sync should fail.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			// gluon: fix(BRIDGE-618): fix UpdateRemoteMessageID correct SQL table(a2a1c48062cb3ffb92899cc299e66b048f39e612)
 			// MessageWithContext wasn't working properly previously, this now gets reported properly.
 			mocks.Reporter.EXPECT().ReportMessageWithContextAndTags("Failed to apply connector update", gomock.Any(), gomock.Any()).AnyTimes()
@@ -353,7 +354,7 @@ func TestBridge_CanProcessEventsDuringSync(t *testing.T) {
 		})
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncStartedCh, syncStartedDone := chToType[events.Event, events.SyncStarted](bridge.GetEvents(events.SyncStarted{}))
 			defer syncStartedDone()
 
@@ -407,7 +408,7 @@ func TestBridge_RefreshDuringSyncRestartSync(t *testing.T) {
 		})
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -471,7 +472,7 @@ func TestBridge_EventReplayAfterSyncHasFinished(t *testing.T) {
 		})
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -561,7 +562,7 @@ func TestBridge_MessageCreateDuringSync(t *testing.T) {
 		})
 
 		// The initial user should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncStartedCh, syncStartedDone := chToType[events.Event, events.SyncStarted](bridge.GetEvents(events.SyncStarted{}))
 			defer syncStartedDone()
 
@@ -620,7 +621,7 @@ func TestBridge_CorruptedVaultClearsPreviousIMAPSyncState(t *testing.T) {
 			createNumMessages(ctx, t, c, addrID, labelID, 100)
 		})
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -671,7 +672,7 @@ func TestBridge_CorruptedVaultClearsPreviousIMAPSyncState(t *testing.T) {
 		}
 
 		// Bridge starts but can't find the gluon database dir; there should be no error.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			_, err := bridge.LoginFull(context.Background(), "imap", password, nil, nil)
 			require.NoError(t, err)
 		})
@@ -693,7 +694,7 @@ func TestBridge_AddressOrderChangeDuringSyncInCombinedModeDoesNotTriggerBadEvent
 		userID, addrID, err := s.CreateUser("user", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncStartedCh, doneSyncStarted := chToType[events.Event, events.SyncStarted](bridge.GetEvents(events.SyncStarted{}))
 			defer func() {
 				doneSyncStarted()

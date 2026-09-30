@@ -27,6 +27,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/observability"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +44,7 @@ func TestBridge_Observability(t *testing.T) {
 		throttlePeriod := time.Millisecond * 500
 		observability.ModifyThrottlePeriod(throttlePeriod)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(bridge.LoginFull(ctx, username, password, nil, nil)))
 
 			bridge.PushObservabilityMetric(testMetric)
@@ -103,7 +104,7 @@ func TestBridge_Observability_Heartbeat(t *testing.T) {
 		throttlePeriod := time.Millisecond * 300
 		observability.ModifyThrottlePeriod(throttlePeriod)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(bridge.LoginFull(ctx, username, password, nil, nil)))
 			bridge.ModifyObservabilityHeartbeatInterval(throttlePeriod)
 
@@ -137,7 +138,7 @@ func TestBridge_Observability_UserMetric(t *testing.T) {
 		observability.ModifyUserMetricInterval(userMetricPeriod)
 		observability.ModifyThrottlePeriod(throttlePeriod)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, vaultKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			require.NoError(t, getErr(bridge.LoginFull(ctx, username, password, nil, nil)))
 			bridge.ModifyObservabilityHeartbeatInterval(heartbeatPeriod)
 

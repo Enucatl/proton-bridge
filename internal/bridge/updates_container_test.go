@@ -28,13 +28,14 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/updater"
 )
 
 func TestContainerUpdateCheckDoesNotInstall(t *testing.T) {
 	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, key []byte) {
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, key, func(b *bridge.Bridge, mocks *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, key, func(b *bridge.Bridge, mocks *bridgeMocks.Mocks) {
 			mocks.Updater.SetLatestVersion(updater.VersionInfo{Releases: []updater.Release{{
 				ReleaseCategory: updater.StableReleaseCategory,
 				Version:         semver.MustParse("99.0.0"), RolloutProportion: 1,

@@ -31,6 +31,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/emersion/go-imap"
@@ -43,7 +44,7 @@ func TestBridge_Send(t *testing.T) {
 		_, _, err := s.CreateUser("recipient", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			senderUserID, err := bridge.LoginFull(ctx, username, password, nil, nil)
 			require.NoError(t, err)
 
@@ -125,7 +126,7 @@ func TestBridge_SendDraftFlags(t *testing.T) {
 		require.NoError(t, err)
 
 		// The sender should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -136,7 +137,7 @@ func TestBridge_SendDraftFlags(t *testing.T) {
 		})
 
 		// Start the bridge.
-		withBridgeWaitForServers(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridgeWaitForServers(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Get the sender user info.
 			userInfo, err := bridge.QueryUserInfo(username)
 			require.NoError(t, err)
@@ -236,7 +237,7 @@ func TestBridge_SendInvite(t *testing.T) {
 		})
 
 		// The sender should be fully synced.
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			syncCh, done := chToType[events.Event, events.SyncFinished](bridge.GetEvents(events.SyncFinished{}))
 			defer done()
 
@@ -247,7 +248,7 @@ func TestBridge_SendInvite(t *testing.T) {
 		})
 
 		// Start the bridge.
-		withBridgeWaitForServers(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridgeWaitForServers(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Get the sender user info.
 			userInfo, err := bridge.QueryUserInfo(username)
 			require.NoError(t, err)
@@ -413,7 +414,7 @@ SGVsbG8gd29ybGQK
 		_, _, err := s.CreateUser("recipient", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			senderUserID, err := bridge.LoginFull(ctx, username, password, nil, nil)
 			require.NoError(t, err)
 
@@ -617,7 +618,7 @@ Hello world
 		_, _, err := s.CreateUser("recipient", password)
 		require.NoError(t, err)
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			senderUserID, err := bridge.LoginFull(ctx, username, password, nil, nil)
 			require.NoError(t, err)
 
@@ -710,7 +711,7 @@ func TestBridge_SendAddressDisabled(t *testing.T) {
 
 		require.NoError(t, s.ChangeAddressAllowSend(senderUserID, addrID, false))
 
-		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridge.Mocks) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			senderUserID, err := bridge.LoginFull(ctx, "sender", password, nil, nil)
 			require.NoError(t, err)
 

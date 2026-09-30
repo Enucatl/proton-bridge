@@ -36,6 +36,7 @@ import (
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
+	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	frontend "github.com/ProtonMail/proton-bridge/v3/internal/frontend/grpc"
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
 	"github.com/ProtonMail/proton-bridge/v3/internal/vault"
@@ -126,7 +127,7 @@ type testCtx struct {
 	locator   *locations.Locations
 	storeKey  []byte
 	version   *semver.Version
-	mocks     *bridge.Mocks
+	mocks     *bridgeMocks.Mocks
 	events    *eventCollector
 	reporter  *reportRecorder
 	heartbeat *heartbeatRecorder
@@ -188,10 +189,10 @@ func newTestCtx(tb testing.TB) *testCtx {
 		dir:       dir,
 		api:       newTestAPI(),
 		netCtl:    proton.NewNetCtl(),
-		locator:   locations.New(bridge.NewTestLocationsProvider(dir), "config-name"),
+		locator:   locations.New(bridgeMocks.NewTestLocationsProvider(dir), "config-name"),
 		storeKey:  []byte("super-secret-store-key"),
 		version:   defaultVersion,
-		mocks:     bridge.NewMocks(tb, defaultVersion, defaultVersion),
+		mocks:     bridgeMocks.NewMocks(tb, defaultVersion, defaultVersion),
 		events:    newEventCollector(),
 		reporter:  newReportRecorder(tb),
 		heartbeat: newHeartbeatRecorder(tb),
