@@ -831,6 +831,10 @@ func withBridgeNoMocks(
 	require.NoError(t, err)
 	defer func() { require.NoError(t, cookieJar.PersistCookies()) }()
 
+	transport := netCtl.NewRoundTripper(&tls.Config{InsecureSkipVerify: true}).(*http.Transport)
+	// SRP proof verification under the race detector can exceed NetCtl's one-second default.
+	transport.ResponseHeaderTimeout = 30 * time.Second
+
 	// Create a new bridge.
 	bridge, eventCh, err := bridge.New(
 		// The app stuff.
@@ -847,7 +851,7 @@ func withBridgeNoMocks(
 		cookieJar,
 		useragent.New(),
 		mocks.TLSReporter,
-		netCtl.NewRoundTripper(&tls.Config{InsecureSkipVerify: true}),
+		transport,
 		mocks.ProxyCtl,
 		mocks.CrashHandler,
 		mocks.Reporter,
