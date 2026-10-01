@@ -1,8 +1,8 @@
 # QuarkBridge - the minimalistic container ProtonBridge
 
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fenucatl%2Fproton--bridge-2496ED?logo=docker&logoColor=white)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
-[![latest tag](https://img.shields.io/github/v/release/ProtonMail/proton-bridge?label=latest&color=2496ED)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
-[![image size](https://img.shields.io/badge/image%20size-19.5%20MB-2496ED)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
+[![latest tag](https://ghcr-badge.egpl.dev/enucatl/proton-bridge/latest_tag?label=latest)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
+[![image size](https://ghcr-badge.egpl.dev/enucatl/proton-bridge/size?tag=latest&label=image%20size)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
 [![downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fghcr-badge.elias.eu.org%2Fapi%2FEnucatl%2Fproton-bridge%2Fproton-bridge&query=downloadCount&label=docker%20pulls&color=2496ED&logo=docker&logoColor=white)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
 [![build](https://img.shields.io/github/actions/workflow/status/Enucatl/proton-bridge/headless.yml?branch=main&label=build)](https://github.com/Enucatl/proton-bridge/actions/workflows/headless.yml)
 [![scan](https://img.shields.io/badge/scan-Trivy-1904DA?logo=trivy&logoColor=white)](https://github.com/Enucatl/proton-bridge/actions/workflows/headless.yml)
