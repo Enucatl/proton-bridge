@@ -40,20 +40,17 @@ Proton API security checks.
 
 ### Requirements
 
-Use an eligible Proton account. Password/TOTP is supported; accounts requiring only hardware security keys need
-upstream Bridge.
+Password/TOTP is supported; hardware security keys are not and need the upstream Bridge.
 
-The container runs as UID/GID **1000:1000** and stores state in **/data**. Make that
-volume private and writable by the service identity. Full deployment settings
-live in the separate Docker Compose repository.
+The container runs as UID/GID `1000:1000` and stores state in `/data` Make that
+volume private and writable by the service identity.
 
 ### Vault key secret
 
 No OS keychain is required. Container deployments supply an existing **32-byte
 raw key** using `--vault-key-file`.
 
-For **fresh state only**, run from `/opt/docker/protonmail-bridge` on the Docker
-host to create the key in the project's ignored secrets directory:
+For **fresh state only** create the key in the project's ignored secrets directory:
 
 ```sh
 mkdir -p -m 0700 secrets
@@ -64,16 +61,6 @@ mkdir -p -m 0700 secrets
 its existing key: a new key cannot decrypt the vault. Follow the
 [migration instructions](#migration).
 
-The key must be readable by its owner and the container user. Group or named ACL
-read access is allowed; executable bits, group write, and other-user permissions
-are rejected. Compose file secrets retain host ownership and ACLs; Compose
-`uid`, `gid`, and `mode` settings do not fix host permissions.
-
-For our deployment, Puppet's `data/nodes/docker.home.arpa.yaml` grants host UID
-**101000** (remap base 100000 + container UID 1000) directory traversal and read
-access to the key. Apply that configuration before starting Bridge. Its named
-ACL reports mode `0640`; the group bits are the ACL mask, and the owning group
-has no access.
 
 ### Docker Compose
 
@@ -96,20 +83,14 @@ Standalone operation without `--vault-key-file` uses a local `0600` key file.
 
 Use a dedicated container network with outbound Proton access, a read-only root
 filesystem, dropped capabilities, and private writable `/data` and `/tmp`.
-Publish host ports only on loopback.
 
 ### Account and mail client setup
 
 Provision the account with `--cli`, using the same state directory and vault key
 as the service. Stop the service before opening the CLI; only one process may
-access the state at a time. Then start the service with `--noninteractive`.
+access the state at a time.
 
-Configure mail clients with the credentials provided by Bridge and **SSL/TLS**:
-
-| Protocol | Container port | Host loopback port in our deployment |
-|----------|----------------|--------------------------------------|
-| IMAP     | 1143           | 10243                                |
-| SMTP     | 1025           | 10125                                |
+Configure mail clients with the credentials provided by Bridge and **SSL/TLS**.
 
 Both listeners require implicit TLS; STARTTLS is not supported. Clients must
 trust the certificate and validate its hostname. Mount a certificate chain and
@@ -126,9 +107,6 @@ and message-content files are encrypted; SQLite metadata and logs are plaintext.
 Compose file secrets are host bind mounts, not encrypted storage. Anyone with
 both the key and encrypted data can decrypt it.
 
-After a successful migration, remove old key copies from the state volume.
-Mounting a secret does not remove them, and whole-host backups may contain both
-state and key.
 
 ### Migration
 
