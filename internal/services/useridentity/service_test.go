@@ -26,11 +26,21 @@ import (
 	mocks2 "github.com/ProtonMail/proton-bridge/v3/internal/events/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/userevents"
 	"github.com/ProtonMail/proton-bridge/v3/internal/services/useridentity/mocks"
+	"github.com/ProtonMail/proton-bridge/v3/pkg/algo"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
 const TestUserID = "MyUserID"
+
+func TestState_CheckAuth_CrashUsername(t *testing.T) {
+	state := NewState(*newTestUser(), newTestAddresses(), nil)
+	provider := NewFixedBridgePassProvider([]byte("password"))
+
+	addrID, err := state.CheckAuth("crash@bandicoot", algo.B64RawEncode([]byte("wrong")), provider)
+	require.EqualError(t, err, "invalid password")
+	require.Empty(t, addrID)
+}
 
 func TestService_OnUserEvent(t *testing.T) {
 	mockCtrl := gomock.NewController(t)

@@ -62,6 +62,17 @@ func TestBridge_Login(t *testing.T) {
 	})
 }
 
+func TestBridge_LoginAuth_CrashUsername(t *testing.T) {
+	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, storeKey []byte) {
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
+			client, _, err := bridge.LoginAuth(ctx, "crash@bandicoot", []byte("wrong"), nil)
+			require.Error(t, err)
+			require.Nil(t, client)
+			require.Empty(t, bridge.GetUserIDs())
+		})
+	})
+}
+
 func TestBridge_Login_DropConn(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

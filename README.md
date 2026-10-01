@@ -33,6 +33,7 @@ Proton API security checks.
 - Prevent concurrent processes from accessing the same state.
 - Deploy as nonroot with a read-only root filesystem, dropped capabilities
 - Disable automatic telemetry, crash reports, and TLS diagnostic uploads.
+- Remove the "funny" `crash@bandicoot` login that lets anyone crash your Bridge over the network without authenticating.
 - Pin build inputs and check dependencies, vulnerabilities, secrets, and runtime behavior.
 - Sync faster thanks to improved concurrency.
 

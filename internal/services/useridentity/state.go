@@ -228,10 +228,6 @@ func (s *State) Clone() *State {
 // CheckAuth returns whether the given email and password can be used to authenticate over IMAP or SMTP with this user.
 // It returns the address ID of the authenticated address.
 func (s *State) CheckAuth(email string, password []byte, bridgePassProvider BridgePassProvider) (string, error) {
-	if email == "crash@bandicoot" {
-		panic("your wish is my command.. I crash")
-	}
-
 	dec, err := algo.B64RawDecode(password)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode password: %w", err)

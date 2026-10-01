@@ -140,9 +140,6 @@ func (bridge *Bridge) QueryUserInfo(query string) (UserInfo, error) {
 func (bridge *Bridge) LoginAuth(ctx context.Context, username string, password []byte, hvDetails *proton.APIHVDetails) (*proton.Client, proton.Auth, error) {
 	logUser.WithField("username", logging.Sensitive(username)).Info("Authorizing user for login")
 
-	if username == "crash@bandicoot" {
-		panic("Your wish is my command.. I crash!")
-	}
 	client, auth, err := bridge.api.NewClientWithLoginWithHVToken(ctx, username, password, hvDetails)
 	if err != nil {
 		if hv.IsHvRequest(err) {
