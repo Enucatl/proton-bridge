@@ -102,26 +102,49 @@ synchronization, and sending separately with a live account and real clients.
 
 ### SMTP recipient policy
 
-Delivery follows the accepted SMTP `RCPT TO` envelope. Bridge filters draft To,
-CC, and BCC lists to those recipients, adds envelope recipients missing from the
-headers as private BCC metadata, and builds packages only for the deduplicated
-envelope. It removes Bcc and Resent-Bcc from outgoing MIME.
+Delivery follows the accepted SMTP `RCPT TO` envelope. Bridge preserves submitted
+To/CC recipient lists, adds envelope recipients missing from the headers as
+private BCC metadata, and builds packages only for the deduplicated envelope. It
+removes Bcc and Resent-Bcc from outgoing MIME.
 
 This prevents header-only CC/BCC addresses from adding delivery recipients,
 including during partial retries and resends. Upstream filters only To and
 builds packages from all draft To/CC/BCC recipients.
 
-**Limitation:** To/CC addresses omitted from the envelope disappear from received
-messages and Sent metadata, losing original addressing context and potentially
-changing Reply All behavior. The tested production API rejects draft recipients
-without corresponding packages and ignores attempts to preserve original visible
-headers separately. Production probes using private internal aliases confirmed
-delivery to exactly the envelope recipients with blind headers remaining private.
+**API limitation:** A To, CC, or BCC address absent from the envelope causes an
+explicit rejection after SMTP DATA, before any draft or send request is created:
 
-This is the restricted submission policy adopted for
-[issue #6](https://github.com/Enucatl/proton-bridge/issues/6). Full preservation of
-independent headers needs a supported API or transport; this policy fixes delivery
-scope while accepting that limitation.
+```text
+554 5.6.0 Cannot preserve message headers: Proton API requires every To, Cc and Bcc recipient to be included in RCPT TO
+```
+
+An envelope/header mismatch can be valid SMTP, including a partial retry or
+redirect. The tested production API rejects draft recipients without
+corresponding packages and ignores attempts to preserve original visible headers
+separately. Bridge therefore rejects these unsupported submissions instead of
+silently deleting addresses or expanding delivery. Ordinary BCC and envelope-only
+recipients remain supported.
+
+For example, with Bob = `bob@example.com`, Alice = `alice@example.com`, and
+Carol = `carol@example.com`:
+
+| Message headers | SMTP `RCPT TO` recipients | Result |
+| --- | --- | --- |
+| `To: Bob`, `Cc: Alice` | Bob only | Rejected: Alice is absent from the envelope. |
+| `To: Bob`, `Bcc: Alice` | Bob only | Rejected: private BCC metadata includes Alice outside the envelope. |
+| `To: Bob` | Carol only | Rejected: a redirect cannot retain Bob in To with this API. |
+| `To: Bob`, `Cc: Alice` | Alice only | Rejected: a partial retry cannot retain the excluded Bob in To. |
+| `To: Bob` | Bob and Alice | Accepted: Alice is an envelope-only blind recipient. |
+| `To: Bob`, `Cc: Alice`, `Bcc: Carol` | Bob, Alice, and Carol | Accepted: visible To/CC recipients are preserved; Carol remains private. |
+
+Every rejected example fails the whole submission: nobody receives a copy and
+the attempt creates no draft or Sent message. Do not add intentionally excluded
+recipients just to bypass the restriction; use a transport that can preserve the
+headers independently of its delivery envelope when that behavior is required.
+
+This supersedes the earlier filtering compromise for
+[issue #6](https://github.com/Enucatl/proton-bridge/issues/6). Successful delivery
+with independent header-only recipients needs a supported API or transport.
 
 ### Backups
 

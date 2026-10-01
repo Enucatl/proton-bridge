@@ -270,7 +270,7 @@ Feature: SMTP sending of plain messages
       }
       """
 
-  Scenario: CC omitted from RCPT is removed from draft and send packages
+  Scenario: CC omitted from RCPT is explicitly rejected without rewriting headers
     When SMTP client "1" sends MAIL FROM "<[user:user]@[domain]>"
     And SMTP client "1" sends RCPT TO "<[user:to]@[domain]>"
     And SMTP client "1" sends DATA:
@@ -284,43 +284,4 @@ Feature: SMTP sending of plain messages
       This is CC missing in RCPT test. Have a nice day!
       .
       """
-    Then it succeeds
-    When user "[user:user]" connects and authenticates IMAP client "1"
-    Then IMAP client "1" eventually sees the following messages in "Sent":
-      | from                 | to                 | cc                 | subject      |
-      | [user:user]@[domain] | [user:to]@[domain] |                    | RCPT-CC test |
-    And the body in the "POST" request to "/mail/v4/messages" is:
-      """
-      {
-        "Message": {
-          "Subject": "RCPT-CC test",
-          "Sender": {
-            "Name": "Bridge Test"
-          },
-          "ToList": [
-            {
-              "Address": "[user:to]@[domain]",
-              "Name": "Internal Bridge"
-            }
-          ],
-          "CCList": [],
-          "BCCList": []
-        }
-      }
-      """
-    And the body in the "POST" request to "/mail/v4/messages/.*" is:
-      """
-      {
-        "Packages": [
-          {
-            "Addresses": {
-              "[user:to]@[domain]": {
-                "Type": 1
-              }
-            },
-            "Type": 1,
-            "MIMEType": "text/plain"
-          }
-        ]
-      }
-      """
+    Then it fails with error "Cannot preserve message headers: Proton API requires every To, Cc and Bcc recipient to be included in RCPT TO"

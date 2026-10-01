@@ -172,16 +172,16 @@ func TestBridge_SendEnvelopeRecipients(t *testing.T) {
 			bcc := "header-bcc@" + s.GetDomain()
 			recipient := "recipient@" + s.GetDomain()
 			const external = "external@example.com"
-			require.NoError(t, client.SendMail(info.Addresses[0], []string{recipient, external, recipient, external}, strings.NewReader(fmt.Sprintf(
+			require.NoError(t, client.SendMail(info.Addresses[0], []string{to, cc, bcc, recipient, external, recipient, external}, strings.NewReader(fmt.Sprintf(
 				"From: %s\r\nTo: Visible To <%s>\r\nCc: Visible CC <%s>\r\nBcc: Private <%s>\r\nResent-Bcc: <%s>\r\nSubject: Envelope recipients\r\nContent-Type: text/plain\r\n\r\nHello world!",
 				info.Addresses[0], to, cc, bcc, bcc,
 			))))
 
 			var draft proton.CreateDraftReq
 			require.NoError(t, json.Unmarshal((<-draftCalls).RequestBody, &draft))
-			require.Empty(t, draft.Message.ToList)
-			require.Empty(t, draft.Message.CCList)
-			require.ElementsMatch(t, []*mail.Address{{Address: recipient}, {Address: external}}, draft.Message.BCCList)
+			require.Equal(t, []*mail.Address{{Name: "Visible To", Address: to}}, draft.Message.ToList)
+			require.Equal(t, []*mail.Address{{Name: "Visible CC", Address: cc}}, draft.Message.CCList)
+			require.ElementsMatch(t, []*mail.Address{{Name: "Private", Address: bcc}, {Address: recipient}, {Address: external}}, draft.Message.BCCList)
 
 			call := <-sendCalls
 			var req proton.SendDraftReq
@@ -196,7 +196,7 @@ func TestBridge_SendEnvelopeRecipients(t *testing.T) {
 					mimePackage = pkg
 				}
 			}
-			require.Equal(t, map[string]int{recipient: 1, external: 1}, addresses)
+			require.Equal(t, map[string]int{to: 1, cc: 1, bcc: 1, recipient: 1, external: 1}, addresses)
 
 			var sent struct{ Sent proton.Message }
 			require.NoError(t, json.Unmarshal(call.ResponseBody, &sent))
@@ -215,8 +215,6 @@ func TestBridge_SendEnvelopeRecipients(t *testing.T) {
 			require.NoError(t, err)
 			mimeMessage, err := mail.ReadMessage(strings.NewReader(plain.GetString()))
 			require.NoError(t, err)
-			// Package MIME retains To/CC input; production reconstructs received
-			// headers from the filtered draft metadata instead.
 			require.Equal(t, "Visible To <"+to+">", mimeMessage.Header.Get("To"))
 			require.Equal(t, "Visible CC <"+cc+">", mimeMessage.Header.Get("Cc"))
 			require.NotContains(t, mimeMessage.Header, "Bcc")
@@ -226,13 +224,9 @@ func TestBridge_SendEnvelopeRecipients(t *testing.T) {
 				withClient(ctx, t, s, name, password, func(ctx context.Context, c *proton.Client) {
 					messages, err := c.GetMessageMetadata(ctx, proton.MessageFilter{LabelID: proton.InboxLabel})
 					require.NoError(t, err)
-					if name == "recipient" {
-						require.Len(t, messages, 1)
-						require.Equal(t, draft.Message.ToList, messages[0].ToList)
-						require.Equal(t, draft.Message.CCList, messages[0].CCList)
-					} else {
-						require.Empty(t, messages, "header-only recipient %s received the message", name)
-					}
+					require.Len(t, messages, 1)
+					require.Equal(t, draft.Message.ToList, messages[0].ToList)
+					require.Equal(t, draft.Message.CCList, messages[0].CCList)
 				})
 			}
 		})

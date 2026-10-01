@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/ProtonMail/proton-bridge/v3/pkg/errmapper"
+	"github.com/emersion/go-smtp"
 )
 
 //nolint:gochecknoglobals
@@ -45,6 +46,15 @@ var errCannotSendFromAddress = NewErrCannotSendFromAddress("")
 
 //nolint:gochecknoglobals
 var smtpErrRules = []errmapper.Rule{
+	errmapper.NewRule(
+		[]error{ErrHeaderEnvelopeMismatch},
+		errmapper.MatchAny,
+		&smtp.SMTPError{
+			Code:         554,
+			EnhancedCode: smtp.EnhancedCode{5, 6, 0},
+			Message:      "Cannot preserve message headers: Proton API requires every To, Cc and Bcc recipient to be included in RCPT TO",
+		},
+	),
 	errmapper.NewRuleWithResultFunc(
 		[]error{
 			ErrSendMessageOperation,

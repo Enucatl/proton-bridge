@@ -39,6 +39,7 @@ var (
 	ErrInvalidListOfRecipients     = errors.New("smtp: invalid list of recipients draft")
 	ErrMessageTooLarge             = errors.New("smtp: message too large draft")
 	ErrValidationFailed            = errors.New("smtp: validation failed")
+	ErrHeaderEnvelopeMismatch      = errors.New("smtp: header recipients outside envelope")
 )
 
 const errCodeAddressDoesNotExist proton.Code = 33102

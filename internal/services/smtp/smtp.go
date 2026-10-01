@@ -210,6 +210,14 @@ func (s *Service) sendWithKey(
 	to []string,
 	message message.Message,
 ) (proton.Message, error) {
+	// Proton cannot preserve draft recipients without assigning them packages.
+	// Reject unsupported mismatches instead of altering headers or delivery scope.
+	for _, addr := range xslices.Join(message.ToList, message.CCList, message.BCCList) {
+		if !slices.Contains(to, addr.Address) {
+			return proton.Message{}, ErrHeaderEnvelopeMismatch
+		}
+	}
+
 	references := message.References
 	if message.InReplyTo != "" {
 		references = append(references, message.InReplyTo)
@@ -421,12 +429,6 @@ func (s *Service) createDraft(
 		return proton.Message{}, fmt.Errorf("%w: address %q is not owned by user", ErrSenderAddressNotOwned, template.Sender.Address)
 	} else { //nolint:revive
 		template.Sender.Address = constructEmail(template.Sender.Address, emails[idx])
-	}
-
-	// Proton requires draft recipients to have packages. Restrict metadata to the
-	// envelope, at the cost of dropping header-only addresses from received/Sent mail.
-	for _, list := range []*[]*mail.Address{&template.ToList, &template.CCList, &template.BCCList} {
-		*list = slices.DeleteFunc(*list, func(addr *mail.Address) bool { return !slices.Contains(to, addr.Address) })
 	}
 
 	// Envelope-only recipients are private BCC metadata.
