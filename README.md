@@ -1,4 +1,4 @@
-# Proton Mail Bridge
+# Proton Mail Bridge - QuarkBridge
 
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fenucatl%2Fproton--bridge-2496ED?logo=docker&logoColor=white)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
 [![latest tag](https://img.shields.io/github/v/release/ProtonMail/proton-bridge?label=latest&color=2496ED)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
@@ -10,9 +10,9 @@
 
 Copyright (c) 2026 Proton AG
 
-## Goals
+## What is this fork about?
 
-Run Proton Mail Bridge as a minimal headless Linux amd64 service for containers,
+Run Proton Mail Bridge as a minimal headless containerized service,
 while retaining upstream mail synchronization, IMAP/SMTP, SQLite storage, and
 Proton API security checks.
 
@@ -26,22 +26,21 @@ Proton API security checks.
 - A vault key file replaces the `pass`/GPG/keychain stack.
 - Operators deploy updates; Bridge does not update itself.
 
-### Security improvements
+### Improvements
 
 - Require implicit TLS for every IMAP and SMTP connection.
-- Keep the vault key in a read-only container secret outside the mail state volume.
 - Reject invalid keys, damaged vaults, and invalid configured certificates without resetting state.
 - Prevent concurrent processes from accessing the same state.
-- Deploy as nonroot with a read-only root filesystem, dropped capabilities, and loopback-only host ports.
+- Deploy as nonroot with a read-only root filesystem, dropped capabilities
 - Disable automatic telemetry, crash reports, and TLS diagnostic uploads.
 - Pin build inputs and check dependencies, vulnerabilities, secrets, and runtime behavior.
+- Sync faster thanks to improved concurrency.
 
 ## Usage
 
 ### Requirements
 
-Use an eligible paid Proton account. Password/TOTP, mailbox passwords, and human
-verification are supported; accounts requiring only hardware security keys need
+Use an eligible Proton account. Password/TOTP is supported; accounts requiring only hardware security keys need
 upstream Bridge.
 
 The container runs as UID/GID **1000:1000** and stores state in **/data**. Make that
