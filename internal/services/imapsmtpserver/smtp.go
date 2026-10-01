@@ -19,6 +19,7 @@ package imapsmtpserver
 
 import (
 	"crypto/tls"
+	"time"
 
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/identifier"
@@ -49,6 +50,12 @@ func newSMTPServer(accounts *smtpservice.Accounts, settings SMTPSettingsProvider
 	smtpServer.Domain = constants.Host
 	smtpServer.AllowInsecureAuth = !constants.IsContainer
 	smtpServer.MaxLineLength = 1 << 16
+	// Bound submissions and stalled connections; the size cap includes MIME encoding headroom.
+	// See https://github.com/Enucatl/proton-bridge/issues/5 for Proton's limits and this policy.
+	smtpServer.MaxRecipients = 100
+	smtpServer.MaxMessageBytes = 100 << 20
+	smtpServer.ReadTimeout = 5 * time.Minute
+	smtpServer.WriteTimeout = 5 * time.Minute
 	smtpServer.ErrorLog = logging.NewSMTPLogger()
 
 	// go-smtp suppors SASL PLAIN but not LOGIN. We need to add LOGIN support ourselves.

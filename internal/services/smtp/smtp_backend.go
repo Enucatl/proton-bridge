@@ -88,15 +88,36 @@ func (s *smtpSession) Reset() {
 
 func (s *smtpSession) Logout() error {
 	s.Reset()
+	s.userID = ""
+	s.authID = ""
+	return nil
+}
+
+// Require authentication before accepting envelope or message data.
+// See https://github.com/Enucatl/proton-bridge/issues/5.
+func (s *smtpSession) requireAuth() error {
+	if s.userID == "" {
+		return &smtp.SMTPError{
+			Code:         530,
+			EnhancedCode: smtp.EnhancedCode{5, 7, 0},
+			Message:      "Authentication required",
+		}
+	}
 	return nil
 }
 
 func (s *smtpSession) Mail(from string, _ *smtp.MailOptions) error {
+	if err := s.requireAuth(); err != nil {
+		return err
+	}
 	s.from = from
 	return nil
 }
 
 func (s *smtpSession) Rcpt(to string) error {
+	if err := s.requireAuth(); err != nil {
+		return err
+	}
 	if len(to) > 0 {
 		s.to = append(s.to, to)
 	}
@@ -105,12 +126,19 @@ func (s *smtpSession) Rcpt(to string) error {
 }
 
 func (s *smtpSession) Data(r io.Reader) error {
+	if err := s.requireAuth(); err != nil {
+		return err
+	}
 	err := s.accounts.SendMail(context.Background(), s.userID, s.authID, s.from, s.to, r)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"pkg":  "smtp",
 			"user": s.userID,
 		}).WithError(err).Error("Send mail failed.")
+		// Preserve the size-limit response through the submission error wrappers (issue #5).
+		if errors.Is(err, smtp.ErrDataTooLarge) {
+			return smtp.ErrDataTooLarge
+		}
 		return mapError(err)
 	}
 	return nil
