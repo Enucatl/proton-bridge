@@ -24,14 +24,14 @@ jobs:
         shell: bash
         run: |
           docker pull --platform linux/amd64 golang:1-trixie
-          docker pull --platform linux/amd64 gcr.io/distroless/base-debian13:nonroot
+          docker pull --platform linux/amd64 gcr.io/distroless/base-nossl-debian13:nonroot
           go_version=$(docker run --rm --platform linux/amd64 golang:1-trixie go env GOVERSION)
           builder_digest=$(docker image inspect golang:1-trixie --format '{{index .RepoDigests 0}}')
-          runtime=$(docker image inspect gcr.io/distroless/base-debian13:nonroot --format '{{index .RepoDigests 0}}')
+          runtime=$(docker image inspect gcr.io/distroless/base-nossl-debian13:nonroot --format '{{index .RepoDigests 0}}')
           builder="golang:${go_version#go}-trixie@${builder_digest##*@}"
           sed -i \
             -e "s|^FROM golang:.* AS builder$|FROM $builder AS builder|" \
-            -e "s|^FROM gcr.io/distroless/base-debian13:.* AS debian$|FROM gcr.io/distroless/base-debian13:nonroot@${runtime##*@} AS debian|" \
+            -e "s|^FROM gcr.io/distroless/base-nossl-debian13:.* AS debian$|FROM gcr.io/distroless/base-nossl-debian13:nonroot@${runtime##*@} AS debian|" \
             scripts/headless/Dockerfile.image
       - name: Check dependency upgrade behavior
         run: ./scripts/headless/latest-deps_test.sh

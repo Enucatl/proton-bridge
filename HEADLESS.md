@@ -17,7 +17,8 @@ make headless-smoke
 ```
 
 `scripts/headless/Dockerfile.image` pins the Go 1.26.7 Debian Trixie builder
-and Distroless `base-debian13:nonroot` runtime directly by version and digest.
+and Distroless `base-nossl-debian13:nonroot` runtime directly by version and
+digest.
 The builder runs `apt-get update` and `apt-get upgrade` to install available
 package fixes. CI disables the baseline's build cache so each run executes the
 upgrade; use `docker build --no-cache` locally to refresh those packages.
