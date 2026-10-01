@@ -1,4 +1,4 @@
-# Proton Mail Bridge - QuarkBridge
+# QuarkBridge - the minimalistic container ProtonBridge
 
 [![image](https://img.shields.io/badge/image-ghcr.io%2Fenucatl%2Fproton--bridge-2496ED?logo=docker&logoColor=white)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
 [![latest tag](https://img.shields.io/github/v/release/ProtonMail/proton-bridge?label=latest&color=2496ED)](https://github.com/Enucatl/proton-bridge/pkgs/container/proton-bridge)
