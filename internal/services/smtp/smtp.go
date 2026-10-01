@@ -423,7 +423,13 @@ func (s *Service) createDraft(
 		template.Sender.Address = constructEmail(template.Sender.Address, emails[idx])
 	}
 
-	// Preserve visible headers; envelope-only recipients are private BCC metadata.
+	// Proton requires draft recipients to have packages. Restrict metadata to the
+	// envelope, at the cost of dropping header-only addresses from received/Sent mail.
+	for _, list := range []*[]*mail.Address{&template.ToList, &template.CCList, &template.BCCList} {
+		*list = slices.DeleteFunc(*list, func(addr *mail.Address) bool { return !slices.Contains(to, addr.Address) })
+	}
+
+	// Envelope-only recipients are private BCC metadata.
 	for _, recipient := range to {
 		if !slices.Contains(xslices.Map(xslices.Join(template.ToList, template.CCList, template.BCCList), func(addr *mail.Address) string {
 			return addr.Address

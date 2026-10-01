@@ -179,9 +179,9 @@ func TestBridge_SendEnvelopeRecipients(t *testing.T) {
 
 			var draft proton.CreateDraftReq
 			require.NoError(t, json.Unmarshal((<-draftCalls).RequestBody, &draft))
-			require.Equal(t, []*mail.Address{{Name: "Visible To", Address: to}}, draft.Message.ToList)
-			require.Equal(t, []*mail.Address{{Name: "Visible CC", Address: cc}}, draft.Message.CCList)
-			require.ElementsMatch(t, []*mail.Address{{Name: "Private", Address: bcc}, {Address: recipient}, {Address: external}}, draft.Message.BCCList)
+			require.Empty(t, draft.Message.ToList)
+			require.Empty(t, draft.Message.CCList)
+			require.ElementsMatch(t, []*mail.Address{{Address: recipient}, {Address: external}}, draft.Message.BCCList)
 
 			call := <-sendCalls
 			var req proton.SendDraftReq
@@ -215,6 +215,8 @@ func TestBridge_SendEnvelopeRecipients(t *testing.T) {
 			require.NoError(t, err)
 			mimeMessage, err := mail.ReadMessage(strings.NewReader(plain.GetString()))
 			require.NoError(t, err)
+			// Package MIME retains To/CC input; production reconstructs received
+			// headers from the filtered draft metadata instead.
 			require.Equal(t, "Visible To <"+to+">", mimeMessage.Header.Get("To"))
 			require.Equal(t, "Visible CC <"+cc+">", mimeMessage.Header.Get("Cc"))
 			require.NotContains(t, mimeMessage.Header, "Bcc")

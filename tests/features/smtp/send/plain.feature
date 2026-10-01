@@ -270,7 +270,7 @@ Feature: SMTP sending of plain messages
       }
       """
 
-  Scenario: CC omitted from RCPT remains visible without receiving a package
+  Scenario: CC omitted from RCPT is removed from draft and send packages
     When SMTP client "1" sends MAIL FROM "<[user:user]@[domain]>"
     And SMTP client "1" sends RCPT TO "<[user:to]@[domain]>"
     And SMTP client "1" sends DATA:
@@ -288,7 +288,7 @@ Feature: SMTP sending of plain messages
     When user "[user:user]" connects and authenticates IMAP client "1"
     Then IMAP client "1" eventually sees the following messages in "Sent":
       | from                 | to                 | cc                 | subject      |
-      | [user:user]@[domain] | [user:to]@[domain] | [user:cc]@[domain] | RCPT-CC test |
+      | [user:user]@[domain] | [user:to]@[domain] |                    | RCPT-CC test |
     And the body in the "POST" request to "/mail/v4/messages" is:
       """
       {
@@ -303,12 +303,7 @@ Feature: SMTP sending of plain messages
               "Name": "Internal Bridge"
             }
           ],
-          "CCList": [
-            {
-              "Address": "[user:cc]@[domain]",
-              "Name": "Internal Bridge 2"
-            }
-          ],
+          "CCList": [],
           "BCCList": []
         }
       }

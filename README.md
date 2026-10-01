@@ -100,6 +100,29 @@ persistent self-signed certificate, whose default identity covers `127.0.0.1`.
 The built-in healthcheck verifies TLS and protocol greetings. Verify login,
 synchronization, and sending separately with a live account and real clients.
 
+### SMTP recipient policy
+
+Delivery follows the accepted SMTP `RCPT TO` envelope. Bridge filters draft To,
+CC, and BCC lists to those recipients, adds envelope recipients missing from the
+headers as private BCC metadata, and builds packages only for the deduplicated
+envelope. It removes Bcc and Resent-Bcc from outgoing MIME.
+
+This prevents header-only CC/BCC addresses from adding delivery recipients,
+including during partial retries and resends. Upstream filters only To and
+builds packages from all draft To/CC/BCC recipients.
+
+**Limitation:** To/CC addresses omitted from the envelope disappear from received
+messages and Sent metadata, losing original addressing context and potentially
+changing Reply All behavior. The tested production API rejects draft recipients
+without corresponding packages and ignores attempts to preserve original visible
+headers separately. Production probes using private internal aliases confirmed
+delivery to exactly the envelope recipients with blind headers remaining private.
+
+This is the restricted submission policy adopted for
+[issue #6](https://github.com/Enucatl/proton-bridge/issues/6). Full preservation of
+independent headers needs a supported API or transport; this policy fixes delivery
+scope while accepting that limitation.
+
 ### Backups
 
 Back up state and the vault key separately, encrypting both backups. The vault
