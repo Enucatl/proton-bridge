@@ -8,8 +8,6 @@
 [![scan](https://img.shields.io/badge/scan-Trivy-1904DA?logo=trivy&logoColor=white)](https://github.com/Enucatl/proton-bridge/actions/workflows/headless.yml)
 [![security](https://img.shields.io/badge/vulnerabilities-GitHub%20Security-2EA44F?logo=github&logoColor=white)](https://github.com/Enucatl/proton-bridge/security/code-scanning)
 
-Copyright (c) 2026 Proton AG
-
 ## What is this fork about?
 
 Run Proton Mail Bridge as a minimal headless containerized service,
@@ -39,164 +37,79 @@ Proton API security checks.
 
 ## Usage
 
-### Requirements
+### 1. Generate the secret key
 
-Password/TOTP is supported; hardware security keys are not and need the upstream Bridge.
-
-The container runs as UID/GID `1000:1000` and stores state in `/data` Make that
-volume private and writable by the service identity.
-
-### Vault key secret
-
-No OS keychain is required. Container deployments supply an existing **32-byte
-raw key** using `--vault-key-file`.
-
-For **fresh state only** create the key in the project's ignored secrets directory:
+For a fresh installation, generate a 32-byte key and grant the container's
+mapped host UID read access. This example uses `101000` for container UID `1000`
+with a remap base of `100000`; use your mapped UID (`1000` without remapping):
 
 ```sh
 mkdir -p -m 0700 secrets
 (umask 077; set -C; openssl rand 32 > secrets/vault_key)
+sudo setfacl -m u:101000:--x secrets
+sudo setfacl -m u:101000:r-- secrets/vault_key
 ```
 
-`set -C` refuses to overwrite an existing file. For existing state, copy or export
-its existing key: a new key cannot decrypt the vault. Follow the
-[migration instructions](#migration).
+Keep this key when reusing existing data; a new key cannot decrypt it.
 
+### 2. Run and log in
 
-### Docker Compose
+Save the Compose example below as `compose.yaml`, then open the interactive CLI:
 
-Add the secret to the existing Bridge service:
+```sh
+docker compose stop bridge
+docker compose run --rm bridge --cli --vault-key-file /run/secrets/bridge_vault_key
+```
+
+At the Bridge prompt, run `login` and follow the password prompts. For two-factor
+authentication, only TOTP is supported. Then run `info 0` to get your mail client
+credentials and `exit` to close the CLI.
+
+### 3. Run noninteractive with Docker Compose
 
 ```yaml
 services:
   bridge:
+    image: ghcr.io/enucatl/proton-bridge:latest
+    platform: linux/amd64
+    user: "1000:1000"
     command: ["--noninteractive", "--vault-key-file", "/run/secrets/bridge_vault_key"]
+    restart: unless-stopped
+    stop_grace_period: 20s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "10243:1143"
+      - "10125:1025"
+    volumes:
+      - bridge_data:/data
+      # Optional: mount existing certificates, readable by the mapped container UID.
+      # If omitted, Bridge creates and persists a self-signed certificate.
+      # - ./certs/cert.pem:/protonmail/certs/cert.pem:ro
+      # - ./certs/key.pem:/protonmail/certs/key.pem:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,uid=1000,gid=1000,mode=700
     secrets:
       - bridge_vault_key
+
+volumes:
+  bridge_data:
+
 secrets:
   bridge_vault_key:
     file: ./secrets/vault_key
 ```
 
-Bridge reads the mounted key without modifying it or copying it into `/data`.
-A missing, malformed, or unsafe secret stops startup; there is no fallback key.
-Standalone operation without `--vault-key-file` uses a local `0600` key file.
-
-Use a dedicated container network with outbound Proton access, a read-only root
-filesystem, dropped capabilities, and private writable `/data` and `/tmp`.
-
-### Account and mail client setup
-
-Provision the account with `--cli`, using the same state directory and vault key
-as the service. Stop the service before opening the CLI; only one process may
-access the state at a time.
-
-Configure mail clients with the credentials provided by Bridge and **SSL/TLS**.
-
-Both listeners require implicit TLS; STARTTLS is not supported. Clients must
-trust the certificate and validate its hostname. Mount a certificate chain and
-private key with `--tls-cert` and `--tls-key`, or explicitly trust Bridge's
-persistent self-signed certificate, whose default identity covers `127.0.0.1`.
-
-The built-in healthcheck verifies TLS and protocol greetings. Verify login,
-synchronization, and sending separately with a live account and real clients.
-
-### SMTP recipient policy
-
-Delivery follows the accepted SMTP `RCPT TO` envelope. Bridge preserves submitted
-To/CC recipient lists, adds envelope recipients missing from the headers as
-private BCC metadata, and builds packages only for the deduplicated envelope. It
-removes Bcc and Resent-Bcc from outgoing MIME.
-
-This prevents header-only CC/BCC addresses from adding delivery recipients,
-including during partial retries and resends. Upstream filters only To and
-builds packages from all draft To/CC/BCC recipients.
-
-**API limitation:** A To, CC, or BCC address absent from the envelope causes an
-explicit rejection after SMTP DATA, before any draft or send request is created:
-
-```text
-554 5.6.0 Cannot preserve message headers: Proton API requires every To, Cc and Bcc recipient to be included in RCPT TO
-```
-
-An envelope/header mismatch can be valid SMTP, including a partial retry or
-redirect. The tested production API rejects draft recipients without
-corresponding packages and ignores attempts to preserve original visible headers
-separately. Bridge therefore rejects these unsupported submissions instead of
-silently deleting addresses or expanding delivery. Ordinary BCC and envelope-only
-recipients remain supported.
-
-For example, with Bob = `bob@example.com`, Alice = `alice@example.com`, and
-Carol = `carol@example.com`:
-
-| Message headers | SMTP `RCPT TO` recipients | Result |
-| --- | --- | --- |
-| `To: Bob`, `Cc: Alice` | Bob only | Rejected: Alice is absent from the envelope. |
-| `To: Bob`, `Bcc: Alice` | Bob only | Rejected: private BCC metadata includes Alice outside the envelope. |
-| `To: Bob` | Carol only | Rejected: a redirect cannot retain Bob in To with this API. |
-| `To: Bob`, `Cc: Alice` | Alice only | Rejected: a partial retry cannot retain the excluded Bob in To. |
-| `To: Bob` | Bob and Alice | Accepted: Alice is an envelope-only blind recipient. |
-| `To: Bob`, `Cc: Alice`, `Bcc: Carol` | Bob, Alice, and Carol | Accepted: visible To/CC recipients are preserved; Carol remains private. |
-
-Every rejected example fails the whole submission: nobody receives a copy and
-the attempt creates no draft or Sent message. Do not add intentionally excluded
-recipients just to bypass the restriction; use a transport that can preserve the
-headers independently of its delivery envelope when that behavior is required.
-
-This supersedes the earlier filtering compromise for
-[issue #6](https://github.com/Enucatl/proton-bridge/issues/6). Successful delivery
-with independent header-only recipients needs a supported API or transport.
-
-### Backups
-
-Back up state and the vault key separately, encrypting both backups. The vault
-and message-content files are encrypted; SQLite metadata and logs are plaintext.
-Compose file secrets are host bind mounts, not encrypted storage. Anyone with
-both the key and encrypted data can decrypt it.
-
-
-### Migration
-
-1. Stop the old service and snapshot all state; keep its image for rollback.
-2. Copy the existing headless `/data/vault.key` into `secrets/vault_key`. For a
-   `pass`/GPG installation, export and decode its existing vault key in the old
-   environment. The resulting file must contain exactly 32 raw bytes.
-3. Grant the container user read access and configure the Compose secret.
-4. Start the replacement with the original state and update clients to SSL/TLS.
-5. Verify login, synchronization, sending, and restart before removing old key copies.
-
-Never run both versions against the same state or use cloned sessions concurrently.
-Rollback may require restoring the full snapshot and authenticating again.
-
-### Build and verify
-
-With Docker, Bash, OpenSSL, Git, and an amd64 host:
-
 ```sh
-docker build --platform linux/amd64 --build-arg REVISION="$(git rev-parse HEAD)" \
-    -f scripts/headless/Dockerfile.image -t protonmail-bridge-headless:local .
-make headless-check
-make headless-smoke
+docker compose up -d
 ```
 
-Checks cover the mail engine, races, dependencies, and container operation.
-Live account and client checks remain separate. Use `--no-cache` when building
-to refresh Debian package fixes.
+Connect your mail client to the Bridge host, with IMAP on `10243` and SMTP on
+`10125`, using **SSL/TLS** and the credentials from `info 0`. Use a hostname
+covered by your mounted certificate. For the default self-signed certificate,
+connect to `127.0.0.1` and trust it in your mail client.
 
-### Development and project reference
-
-See [BUILDS.md](BUILDS.md) for upstream build information and
-[CONTRIBUTING.md](CONTRIBUTING.md) for contribution policy.
-Licensing details are in [LICENSE](LICENSE) and [COPYING_NOTES.md](COPYING_NOTES.md).
-
-Build and test environment variables:
-
-| Variable | Purpose |
-|----------|---------|
-| `APP_VERSION` | Bridge version used during testing or building |
-| `PROTONMAIL_ENV` | Set to `dev` to disable Sentry in development builds |
-| `VERBOSITY` | Log level for tests and the Makefile |
-| `TEST_ENV` | Integration test environment (`fake` or `live`) |
-| `TEST_ACCOUNTS` | JSON file containing test accounts |
-| `TAGS` | Build tags for tests |
-| `FEATURES` | Feature directory, file, or scenario to test |
+Copyright (c) 2026 Proton AG
