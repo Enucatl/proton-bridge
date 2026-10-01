@@ -7,7 +7,7 @@ The repository now contains the `container` build variant and
 loading, optional custom certificates with stored self-signed fallback,
 native implicit-TLS listeners, healthcheck and signal shutdown. Fork CI, pinned static CGO build inputs,
 Distroless/scratch validation fixtures and release packaging are implemented.
-See [HEADLESS.md](HEADLESS.md) for build, operation and migration instructions.
+See [README.md](README.md#usage) for build, operation and migration instructions.
 
 The changes live directly in this fork, based on `v3.27.1`, with upstream
 module paths. Builds compile this source; upgrades merge or rebase newer
@@ -26,8 +26,8 @@ the goal is the smallest maintainable distribution supporting this deployment.
 
 The assessment used upstream checkout `b9c5dac1` and the deployment found at
 `/export/docker/protonmail-bridge`, corresponding to the intended deployment at
-`/opt/docker/protonmail-bridge`. Local binary/runtime validation is recorded in
-HEADLESS.md; live replacement and migration remain operator checks.
+`/opt/docker/protonmail-bridge`. See [README.md](README.md#build-and-verify) for
+local validation commands; live replacement and migration remain operator checks.
 
 Agreed defaults:
 
