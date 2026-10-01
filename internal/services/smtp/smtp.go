@@ -45,7 +45,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/usertypes"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/message"
 	"github.com/ProtonMail/proton-bridge/v3/pkg/message/parser"
-	"github.com/ProtonMail/proton-bridge/v3/pkg/utils"
 	"github.com/bradenaw/juniper/parallel"
 	"github.com/bradenaw/juniper/xslices"
 	"github.com/sirupsen/logrus"
@@ -151,9 +150,20 @@ func (s *Service) smtpSendMail(ctx context.Context, authID string, from string, 
 		}
 
 		// Parse the message we want to send (after we have attached the public key).
-		message, err := message.ParseWithParser(parser, false)
+		parsedMessage, err := message.ParseWithParser(parser, false)
 		if err != nil {
 			return fmt.Errorf("failed to parse message: %w", err)
+		}
+
+		// Keep blind recipients in private draft metadata, never in outgoing MIME.
+		if parser.Root().Header.Has("Bcc") || parser.Root().Header.Has("Resent-Bcc") {
+			parser.Root().Header.Del("Bcc")
+			parser.Root().Header.Del("Resent-Bcc")
+			var mimeBody bytes.Buffer
+			if err := parser.NewWriter().Write(&mimeBody); err != nil {
+				return fmt.Errorf("failed to write outgoing MIME: %w", err)
+			}
+			parsedMessage.MIMEBody = message.MIMEBody(mimeBody.String())
 		}
 
 		// Send the message using the correct key.
@@ -164,7 +174,7 @@ func (s *Service) smtpSendMail(ctx context.Context, authID string, from string, 
 			settings,
 			userKR, addrKR,
 			emails, from, to,
-			message,
+			parsedMessage,
 		)
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrSendMessageOperation, err)
@@ -261,7 +271,7 @@ func (s *Service) sendWithKey(
 		return proton.Message{}, fmt.Errorf("failed to create attachments: %w", err)
 	}
 
-	recipients, err := s.getRecipients(ctx, s.client, userKR, settings, draft)
+	recipients, err := s.getRecipients(ctx, s.client, userKR, settings, to, draft.MIMEType)
 	if err != nil {
 		s.observabilitySender.AddDistinctMetrics(observability.SMTPError, observabilitymetrics.GenerateFailedToGetRecipients())
 		return proton.Message{}, fmt.Errorf("%w: %w", ErrGetRecipientsOperation, err)
@@ -413,12 +423,7 @@ func (s *Service) createDraft(
 		template.Sender.Address = constructEmail(template.Sender.Address, emails[idx])
 	}
 
-	// Check ToList: ensure that ToList only contains addresses we actually plan to send to.
-	template.ToList = utils.Filter(template.ToList, func(addr *mail.Address) bool {
-		return slices.Contains(to, addr.Address)
-	})
-
-	// Check BCCList: any recipients not present in the ToList or CCList are BCC recipients.
+	// Preserve visible headers; envelope-only recipients are private BCC metadata.
 	for _, recipient := range to {
 		if !slices.Contains(xslices.Map(xslices.Join(template.ToList, template.CCList, template.BCCList), func(addr *mail.Address) string {
 			return addr.Address
@@ -536,11 +541,10 @@ func (s *Service) getRecipients(
 	client *proton.Client,
 	userKR *crypto.KeyRing,
 	settings proton.MailSettings,
-	draft proton.Message,
+	to []string,
+	mimeType rfc822.MIMEType,
 ) (recipients, error) {
-	addresses := xslices.Map(xslices.Join(draft.ToList, draft.CCList, draft.BCCList), func(addr *mail.Address) string {
-		return addr.Address
-	})
+	addresses := xslices.Unique(to)
 
 	prefs, err := parallel.MapContext(ctx, runtime.NumCPU(), addresses, func(ctx context.Context, recipient string) (proton.SendPreferences, error) {
 		defer async.HandlePanic(s.panicHandler)
@@ -559,7 +563,7 @@ func (s *Service) getRecipients(
 			return proton.SendPreferences{}, fmt.Errorf("failed to get contact settings for %v: %w", recipient, err)
 		}
 
-		return buildSendPrefs(contactSettings, settings, pubKeys, draft.MIMEType, recType == proton.RecipientTypeInternal)
+		return buildSendPrefs(contactSettings, settings, pubKeys, mimeType, recType == proton.RecipientTypeInternal)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrGetSendPreferencesOperation, err)

@@ -270,7 +270,7 @@ Feature: SMTP sending of plain messages
       }
       """
 
-  Scenario: RCPT does not contain all CC
+  Scenario: CC omitted from RCPT remains visible without receiving a package
     When SMTP client "1" sends MAIL FROM "<[user:user]@[domain]>"
     And SMTP client "1" sends RCPT TO "<[user:to]@[domain]>"
     And SMTP client "1" sends DATA:
@@ -320,9 +320,6 @@ Feature: SMTP sending of plain messages
           {
             "Addresses": {
               "[user:to]@[domain]": {
-                "Type": 1
-              },
-              "[user:cc]@[domain]": {
                 "Type": 1
               }
             },

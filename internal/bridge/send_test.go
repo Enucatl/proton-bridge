@@ -20,8 +20,12 @@ package bridge_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"net/mail"
 	"os"
 	"runtime"
 	"strings"
@@ -30,6 +34,7 @@ import (
 
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/ProtonMail/go-proton-api/server"
+	"github.com/ProtonMail/gopenpgp/v2/crypto"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
 	bridgeMocks "github.com/ProtonMail/proton-bridge/v3/internal/bridge/mocks"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
@@ -115,6 +120,119 @@ func TestBridge_Send(t *testing.T) {
 
 				return sent.Messages == 10 && inbox.Messages == 10
 			}, 10*time.Second, 100*time.Millisecond)
+		})
+	})
+}
+
+func TestBridge_SendEnvelopeRecipients(t *testing.T) {
+	withEnv(t, func(ctx context.Context, s *server.Server, netCtl *proton.NetCtl, locator bridge.Locator, storeKey []byte) {
+		for _, name := range []string{"recipient", "header-to", "header-cc", "header-bcc"} {
+			_, _, err := s.CreateUser(name, password)
+			require.NoError(t, err)
+		}
+		withClient(ctx, t, s, username, password, func(ctx context.Context, c *proton.Client) {
+			_, err := c.SetSignExternalMessages(ctx, proton.SetSignExternalMessagesReq{Sign: proton.SignExternalMessagesEnabled})
+			require.NoError(t, err)
+			_, err = c.SetDefaultPGPScheme(ctx, proton.SetDefaultPGPSchemeReq{PGPScheme: proton.PGPMIMEScheme})
+			require.NoError(t, err)
+		})
+
+		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(b *bridge.Bridge, _ *bridgeMocks.Mocks) {
+			userID, err := b.LoginFull(ctx, username, password, nil, nil)
+			require.NoError(t, err)
+			info, err := b.GetUserInfo(userID)
+			require.NoError(t, err)
+
+			draftCalls, sendCalls := make(chan server.Call, 1), make(chan server.Call, 1)
+			s.AddCallWatcher(func(call server.Call) {
+				if call.Method != http.MethodPost || !strings.HasPrefix(call.URL.Path, "/mail/v4/messages") {
+					return
+				}
+				var body struct {
+					Message  *proton.DraftTemplate
+					Packages []*proton.MessagePackage
+				}
+				if json.Unmarshal(call.RequestBody, &body) != nil {
+					return
+				}
+				if body.Message != nil {
+					draftCalls <- call
+				} else if len(body.Packages) > 0 {
+					sendCalls <- call
+				}
+			})
+
+			client, err := dialSMTP(net.JoinHostPort(constants.Host, fmt.Sprint(b.GetSMTPPort())))
+			require.NoError(t, err)
+			defer client.Close() //nolint:errcheck
+			require.NoError(t, client.Auth(sasl.NewPlainClient(info.Addresses[0], info.Addresses[0], string(info.BridgePass))))
+
+			to := "header-to@" + s.GetDomain()
+			cc := "header-cc@" + s.GetDomain()
+			bcc := "header-bcc@" + s.GetDomain()
+			recipient := "recipient@" + s.GetDomain()
+			const external = "external@example.com"
+			require.NoError(t, client.SendMail(info.Addresses[0], []string{recipient, external, recipient, external}, strings.NewReader(fmt.Sprintf(
+				"From: %s\r\nTo: Visible To <%s>\r\nCc: Visible CC <%s>\r\nBcc: Private <%s>\r\nResent-Bcc: <%s>\r\nSubject: Envelope recipients\r\nContent-Type: text/plain\r\n\r\nHello world!",
+				info.Addresses[0], to, cc, bcc, bcc,
+			))))
+
+			var draft proton.CreateDraftReq
+			require.NoError(t, json.Unmarshal((<-draftCalls).RequestBody, &draft))
+			require.Equal(t, []*mail.Address{{Name: "Visible To", Address: to}}, draft.Message.ToList)
+			require.Equal(t, []*mail.Address{{Name: "Visible CC", Address: cc}}, draft.Message.CCList)
+			require.ElementsMatch(t, []*mail.Address{{Name: "Private", Address: bcc}, {Address: recipient}, {Address: external}}, draft.Message.BCCList)
+
+			call := <-sendCalls
+			var req proton.SendDraftReq
+			require.NoError(t, json.Unmarshal(call.RequestBody, &req))
+			addresses := make(map[string]int)
+			var mimePackage *proton.MessagePackage
+			for _, pkg := range req.Packages {
+				for address := range pkg.Addresses {
+					addresses[address]++
+				}
+				if pkg.Addresses[external] != nil {
+					mimePackage = pkg
+				}
+			}
+			require.Equal(t, map[string]int{recipient: 1, external: 1}, addresses)
+
+			var sent struct{ Sent proton.Message }
+			require.NoError(t, json.Unmarshal(call.ResponseBody, &sent))
+			require.Equal(t, draft.Message.ToList, sent.Sent.ToList)
+			require.Equal(t, draft.Message.CCList, sent.Sent.CCList)
+			require.Equal(t, draft.Message.BCCList, sent.Sent.BCCList)
+
+			require.NotNil(t, mimePackage)
+			require.Equal(t, proton.ClearMIMEScheme, mimePackage.Type)
+			require.NotNil(t, mimePackage.BodyKey)
+			key, err := base64.StdEncoding.DecodeString(mimePackage.BodyKey.Key)
+			require.NoError(t, err)
+			body, err := base64.StdEncoding.DecodeString(mimePackage.Body)
+			require.NoError(t, err)
+			plain, err := crypto.NewSessionKeyFromToken(key, mimePackage.BodyKey.Algorithm).Decrypt(body)
+			require.NoError(t, err)
+			mimeMessage, err := mail.ReadMessage(strings.NewReader(plain.GetString()))
+			require.NoError(t, err)
+			require.Equal(t, "Visible To <"+to+">", mimeMessage.Header.Get("To"))
+			require.Equal(t, "Visible CC <"+cc+">", mimeMessage.Header.Get("Cc"))
+			require.NotContains(t, mimeMessage.Header, "Bcc")
+			require.NotContains(t, mimeMessage.Header, "Resent-Bcc")
+
+			for _, name := range []string{"recipient", "header-to", "header-cc", "header-bcc"} {
+				withClient(ctx, t, s, name, password, func(ctx context.Context, c *proton.Client) {
+					messages, err := c.GetMessageMetadata(ctx, proton.MessageFilter{LabelID: proton.InboxLabel})
+					require.NoError(t, err)
+					if name == "recipient" {
+						require.Len(t, messages, 1)
+						require.Equal(t, draft.Message.ToList, messages[0].ToList)
+						require.Equal(t, draft.Message.CCList, messages[0].CCList)
+					} else {
+						require.Empty(t, messages, "header-only recipient %s received the message", name)
+					}
+				})
+			}
 		})
 	})
 }
