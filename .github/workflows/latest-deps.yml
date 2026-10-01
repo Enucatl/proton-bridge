@@ -39,11 +39,6 @@ jobs:
         run: ./scripts/headless/run.sh latest-deps
       - name: Format, vet, unit/integration tests, race and reachable Go vulnerabilities
         run: ./scripts/headless/run.sh check
-      - name: Build candidate runtime image
-        run: |
-          docker build --platform linux/amd64 --target runtime \
-            --build-arg "REVISION=${{ github.sha }}" \
-            -f scripts/headless/Dockerfile.image -t proton-bridge-headless:compatibility .
       - name: Smoke-test candidate runtime
         run: ./scripts/headless/smoke.sh
       - name: Save candidate updates, including failed attempts

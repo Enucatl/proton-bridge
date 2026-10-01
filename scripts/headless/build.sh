@@ -18,6 +18,4 @@ go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X $prefix.Version=$UPSTREAM_VERSION -X $prefix.DownstreamVersion=$HEADLESS_VERSION -X $prefix.Revision=$REVISION -X $prefix.Tag=$HEADLESS_VERSION -X $prefix.BuildTime=$build_time -X $prefix.BuildEnv=headless -X '$prefix.FullAppName=Proton Mail Bridge Headless'" \
     -o headless-dist/proton-bridge-headless ./cmd/proton-bridge-headless
 readelf -h headless-dist/proton-bridge-headless | grep 'Advanced Micro Devices X86-64'
-go version -m headless-dist/proton-bridge-headless > headless-dist/build-info.txt
-dpkg-query -W > headless-dist/build-packages.txt
 headless-dist/proton-bridge-headless --version
