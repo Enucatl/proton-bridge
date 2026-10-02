@@ -813,6 +813,15 @@ func withBridgeNoMocks(
 	// Create the vault.
 	vault, _, err := vault.New(vaultDir, t.TempDir(), vaultKey, async.NoopPanicHandler{})
 	require.NoError(t, err)
+	getAvailablePort := func() int {
+		listener, err := net.Listen("tcp", ":0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		require.NoError(t, listener.Close())
+		return port
+	}
+	require.NoError(t, vault.SetIMAPPort(getAvailablePort()))
+	require.NoError(t, vault.SetSMTPPort(getAvailablePort()))
 	if constants.IsContainer {
 		template, err := certs.NewTLSTemplate()
 		require.NoError(t, err)
