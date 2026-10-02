@@ -30,6 +30,8 @@ jobs:
           echo "upstream_version=$version" >> "$GITHUB_OUTPUT"
           echo "upstream_major=${version%%.*}" >> "$GITHUB_OUTPUT"
           echo "upstream_minor=${version%.*}" >> "$GITHUB_OUTPUT"
+      - name: Check stable upstream release synchronization
+        run: ./scripts/headless/upstream-release_test.sh
       - name: Format, vet, unit/integration tests, race and reachable Go vulnerabilities
         run: ./scripts/headless/run.sh check
       - name: Smoke-test Debian nonroot runtime

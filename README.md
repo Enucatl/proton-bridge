@@ -112,4 +112,39 @@ Connect your mail client to the Bridge host, with IMAP on `10243` and SMTP on
 covered by your mounted certificate. For the default self-signed certificate,
 connect to `127.0.0.1` and trust it in your mail client.
 
+## Upstream releases
+
+The stable release sync runs daily at **05:47 UTC** and on manual dispatch.
+It merges the exact latest stable ProtonMail release tag into a temporary
+`bot/upstream-release/<tag>` branch and proposes a PR to `main`. Releases already
+contained in `main` or an open release PR are skipped. Upstream development
+commits wait for a stable release.
+
+Codex runs only for merge conflicts, with one attempt and a 15-minute agent limit,
+using the baseline's `deepseek/deepseek-v4.1-flash` model through OpenRouter's
+Responses endpoint. It may change only conflicted paths. Automation and
+security-policy conflicts require manual repair. Failed attempts retain
+diagnostics as workflow artifacts for 14 days and open no PR; the next run retries.
+The PR includes pinned commits and the conflict-resolution summary for review.
+
+Configure repository Actions secrets `OPENROUTER_API_KEY` and
+`UPSTREAM_SYNC_TOKEN`. The latter must be a repository-scoped fine-grained token
+with **Contents**, **Pull requests**, and **Workflows** write permissions so
+the resulting PR starts CI. The write token is available only to the trusted PR
+creation step, after a separate job reconstructs and validates the merge.
+
+Require human approval and successful existing CI before merging a release PR.
+Use GitHub's **Create a merge commit** method to retain upstream ancestry, then
+delete the temporary branch. A squash or rebase merge prevents the next sync
+from recognizing the release as integrated. This repository permits merge
+commits only, deletes merged branches automatically, and requires passing
+`check`, `image / build / finalize`, and `image / scan` checks on `main`, including
+for administrators. Direct pushes must therefore have passing checks first.
+Review remains manual: the maintainer's sync token creates PRs under their own
+account, and GitHub does not allow authors to formally approve their own PRs.
+
+Every checked push to `main`, including fork fixes between releases, continues
+publishing the Makefile version, major/minor aliases, and `latest`. No separate
+stable branch or release snapshot image is built.
+
 Copyright (c) 2026 Proton AG
