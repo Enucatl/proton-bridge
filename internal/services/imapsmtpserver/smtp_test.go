@@ -11,6 +11,7 @@ package imapsmtpserver
 
 import (
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http/httptest"
@@ -108,9 +109,7 @@ func TestSMTPSubmissionLimits(t *testing.T) {
 	protocol := dialSMTP(t, server)
 	capabilities := smtpCommand(t, protocol, "EHLO test", 250)
 	require.Contains(t, capabilities, "SIZE 64")
-	require.Contains(t, capabilities, "AUTH PLAIN")
-	require.NotContains(t, capabilities, "LOGIN")
-	smtpCommand(t, protocol, "AUTH LOGIN", 504)
+	require.Regexp(t, `(?m)^AUTH (PLAIN LOGIN|LOGIN PLAIN)$`, capabilities)
 	smtpCommand(t, protocol, "AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=", 235)
 	smtpCommand(t, protocol, "MAIL FROM:<sender@example.com> SIZE=65", 552)
 	smtpCommand(t, protocol, "MAIL FROM:<sender@example.com>", 250)
@@ -131,6 +130,49 @@ func TestSMTPSubmissionLimits(t *testing.T) {
 	_, _, err = protocol.ReadResponse(552)
 	require.NoError(t, err)
 	smtpCommand(t, protocol, "QUIT", 221)
+}
+
+type loginSMTPBackend struct{ consumingSMTPBackend }
+
+func (loginSMTPBackend) NewSession(*smtp.Conn) (smtp.Session, error) {
+	return loginSMTPBackend{}, nil
+}
+
+func (loginSMTPBackend) AuthPlain(username, password string) error {
+	if username != "user" || password != "password" {
+		return errors.New("invalid username or password")
+	}
+	return nil
+}
+
+func TestSMTPLogin(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		initial  bool
+		password string
+		want     int
+	}{
+		{"challenges", false, "cGFzc3dvcmQ=", 235},
+		{"initial response", true, "cGFzc3dvcmQ=", 235},
+		{"challenges with invalid password", false, "d3Jvbmc=", 454},
+		{"initial response with invalid password", true, "d3Jvbmc=", 454},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := newSMTPServer(nil, testSMTPSettings{})
+			server.Backend = loginSMTPBackend{}
+			server.AllowInsecureAuth = true
+			protocol := dialSMTP(t, server)
+			smtpCommand(t, protocol, "EHLO test", 250)
+			if test.initial {
+				require.Equal(t, "UGFzc3dvcmQ6", smtpCommand(t, protocol, "AUTH LOGIN dXNlcg==", 334))
+			} else {
+				require.Equal(t, "VXNlcm5hbWU6", smtpCommand(t, protocol, "AUTH LOGIN", 334))
+				require.Equal(t, "UGFzc3dvcmQ6", smtpCommand(t, protocol, "dXNlcg==", 334))
+			}
+			smtpCommand(t, protocol, test.password, test.want)
+			smtpCommand(t, protocol, "QUIT", 221)
+		})
+	}
 }
 
 func TestSMTPHandshakeTimeout(t *testing.T) {

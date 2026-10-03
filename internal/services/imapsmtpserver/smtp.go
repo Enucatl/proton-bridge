@@ -25,6 +25,7 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/identifier"
 	"github.com/ProtonMail/proton-bridge/v3/internal/logging"
 	smtpservice "github.com/ProtonMail/proton-bridge/v3/internal/services/smtp"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"github.com/sirupsen/logrus"
 )
@@ -57,6 +58,10 @@ func newSMTPServer(accounts *smtpservice.Accounts, settings SMTPSettingsProvider
 	smtpServer.WriteTimeout = 5 * time.Minute
 	smtpServer.ErrorLog = logging.NewSMTPLogger()
 
+	smtpServer.EnableAuth("LOGIN", func(conn *smtp.Conn) sasl.Server {
+		return &loginServer{session: conn.Session()}
+	})
+
 	if settings.Log() {
 		logSMTP.Warning("================================================")
 		logSMTP.Warning("THIS LOG WILL CONTAIN **DECRYPTED** MESSAGE DATA")
@@ -66,4 +71,32 @@ func newSMTPServer(accounts *smtpservice.Accounts, settings SMTPSettingsProvider
 	}
 
 	return smtpServer
+}
+
+// loginServer preserves legacy LOGIN support after go-sasl dropped its server implementation.
+// See https://github.com/emersion/go-sasl/issues/19.
+type loginServer struct {
+	step     int
+	username string
+	session  smtp.Session
+}
+
+func (s *loginServer) Next(response []byte) ([]byte, bool, error) {
+	switch s.step {
+	case 0:
+		s.step = 1
+		if response == nil {
+			return []byte("Username:"), false, nil
+		}
+		fallthrough
+	case 1:
+		s.username = string(response)
+		s.step = 2
+		return []byte("Password:"), false, nil
+	case 2:
+		s.step = 3
+		return nil, true, s.session.AuthPlain(s.username, string(response))
+	default:
+		return nil, false, sasl.ErrUnexpectedClientResponse
+	}
 }
