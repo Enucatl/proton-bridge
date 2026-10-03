@@ -23,7 +23,7 @@ for status in 0 42 23; do
     test "$actual" -eq "$status"
     grep -F 'aquasec/trivy:0.74.0@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9' "$MOCK_LOG" >/dev/null
     grep -F ' fs --scanners misconfig,secret ' "$MOCK_LOG" >/dev/null
-    grep -F -- '--severity HIGH,CRITICAL --exit-code 42' "$MOCK_LOG" >/dev/null
+    grep -F -- '--severity MEDIUM,HIGH,CRITICAL --exit-code 42' "$MOCK_LOG" >/dev/null
     grep -F -- '--ignorefile /dev/null' "$MOCK_LOG" >/dev/null
 done
 echo 'Source security gate checks passed'
