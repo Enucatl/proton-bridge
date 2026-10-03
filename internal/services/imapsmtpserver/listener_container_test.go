@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"sync"
 
 	"github.com/ProtonMail/proton-bridge/v3/internal/identifier"
 	"strconv"
@@ -45,7 +46,8 @@ func TestContainerListenerRequiresTLS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	var wg sync.WaitGroup
+	defer func() { listener.Close(); wg.Wait() }()
 	addr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok || !addr.IP.IsUnspecified() {
 		t.Fatalf("listener did not bind container interfaces: %v", listener.Addr())
@@ -53,7 +55,7 @@ func TestContainerListenerRequiresTLS(t *testing.T) {
 
 	// Sending plaintext credentials cannot reach any mail protocol handler.
 	done := make(chan error, 1)
-	go func() {
+	wg.Go(func() {
 		conn, err := listener.Accept()
 		if err != nil {
 			done <- err
@@ -63,7 +65,7 @@ func TestContainerListenerRequiresTLS(t *testing.T) {
 		_ = conn.SetDeadline(time.Now().Add(time.Second))
 		_, err = conn.Read(make([]byte, 1))
 		done <- err
-	}()
+	})
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(addr.Port)), time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +79,7 @@ func TestContainerListenerRequiresTLS(t *testing.T) {
 	}
 
 	// A trusted TLS client can complete the shared listener handshake.
-	go func() {
+	wg.Go(func() {
 		conn, err := listener.Accept()
 		if err != nil {
 			done <- err
@@ -86,7 +88,7 @@ func TestContainerListenerRequiresTLS(t *testing.T) {
 		defer conn.Close()
 		_ = conn.SetDeadline(time.Now().Add(time.Second))
 		done <- conn.(*tls.Conn).Handshake()
-	}()
+	})
 	clientConfig := fixture.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 	client, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(addr.Port)), clientConfig)
 	if err != nil {

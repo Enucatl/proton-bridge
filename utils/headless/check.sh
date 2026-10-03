@@ -13,6 +13,6 @@ packages=$(go list -deps -f '{{if and (not .Standard) .Module}}{{if .Module.Main
 set -- $packages
 go vet "$@"
 go test -count=1 -timeout=20m "$@"
-go test -race -count=1 -timeout=40m ./internal/app ./internal/bridge ./internal/vault ./internal/certs ./internal/frontend/cli ./internal/services/imapsmtpserver ./internal/user ./internal/telemetry ./internal/sentry ./internal/services/observability ./internal/unleash ./internal/dialer ./cmd/proton-bridge-headless
+go test -race -count=1 -timeout=40m "$@"
 govulncheck ./cmd/proton-bridge-headless
 ./utils/headless/build.sh

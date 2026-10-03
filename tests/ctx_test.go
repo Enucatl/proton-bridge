@@ -120,6 +120,8 @@ func newTestAddr(addrID, email string) *testAddr {
 }
 
 type testCtx struct {
+	closeOnce sync.Once
+
 	// These are the objects supporting the test.
 	dir       string
 	api       API
@@ -137,13 +139,16 @@ type testCtx struct {
 	vault  *vault.Vault
 
 	// service holds the gRPC frontend service under test.
-	service   *frontend.Service
-	serviceWG sync.WaitGroup
+	service     *frontend.Service
+	serviceWG   sync.WaitGroup
+	serviceErr  error
+	serviceStop chan struct{}
 
 	// client holds the gRPC frontend client under test.
 	client        frontend.BridgeClient
 	clientConn    *grpc.ClientConn
 	clientEventCh *async.QueuedChannel[*frontend.StreamEvent]
+	clientWG      sync.WaitGroup
 
 	// These maps hold test objects created during the test.
 	userByID       map[string]*testUser
@@ -212,6 +217,8 @@ func newTestCtx(tb testing.TB) *testCtx {
 
 		t.calls[len(t.calls)-1] = append(t.calls[len(t.calls)-1], call)
 	})
+
+	tb.Cleanup(func() { t.close(context.Background()) })
 
 	return t
 }
@@ -447,44 +454,46 @@ func (t *testCtx) getLastError() error {
 }
 
 func (t *testCtx) close(ctx context.Context) {
-	for _, client := range t.imapClients {
-		if err := client.client.Logout(); err != nil {
-			logrus.WithError(err).Error("Failed to logout IMAP client")
+	t.closeOnce.Do(func() {
+		for _, client := range t.imapClients {
+			if err := client.client.Logout(); err != nil {
+				logrus.WithError(err).Error("Failed to logout IMAP client")
+			}
 		}
-	}
 
-	for _, client := range t.smtpClients {
-		if err := client.client.Close(); err != nil {
-			logrus.WithError(err).Error("Failed to close SMTP client")
+		for _, client := range t.smtpClients {
+			if err := client.client.Close(); err != nil {
+				logrus.WithError(err).Error("Failed to close SMTP client")
+			}
 		}
-	}
 
-	if t.service != nil {
-		if err := t.closeFrontendService(ctx); err != nil {
-			logrus.WithError(err).Error("Failed to close frontend service")
+		if t.service != nil {
+			if err := t.closeFrontendService(ctx); err != nil {
+				logrus.WithError(err).Error("Failed to close frontend service")
+			}
 		}
-	}
 
-	if t.client != nil {
-		if err := t.closeFrontendClient(); err != nil {
-			logrus.WithError(err).Error("Failed to close frontend client")
+		if t.client != nil {
+			if err := t.closeFrontendClient(); err != nil {
+				logrus.WithError(err).Error("Failed to close frontend client")
+			}
 		}
-	}
 
-	if t.bridge != nil {
-		if err := t.closeBridge(ctx); err != nil {
-			logrus.WithError(err).Error("Failed to close bridge")
+		if t.bridge != nil {
+			if err := t.closeBridge(ctx); err != nil {
+				logrus.WithError(err).Error("Failed to close bridge")
+			}
 		}
-	}
 
-	for _, listener := range t.dummyListeners {
-		if err := listener.Close(); err != nil {
-			logrus.WithError(err).Errorf("Failed to close dummy listener %v", listener.Addr())
+		for _, listener := range t.dummyListeners {
+			if err := listener.Close(); err != nil {
+				logrus.WithError(err).Errorf("Failed to close dummy listener %v", listener.Addr())
+			}
 		}
-	}
 
-	t.api.Close()
-	t.events.close()
-	t.reporter.close()
-	t.reporter.assertEmpty()
+		t.api.Close()
+		t.events.close()
+		t.reporter.close()
+		t.reporter.assertEmpty()
+	})
 }

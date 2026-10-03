@@ -73,11 +73,8 @@ func Test_Update_BetaEligible(t *testing.T) {
 				expectedRelease,
 			}}
 
-			go func() {
-				time.Sleep(1 * time.Second)
-				mocks.Updater.SetLatestVersion(updaterData)
-				bridge.CheckForUpdates()
-			}()
+			mocks.Updater.SetLatestVersion(updaterData)
+			bridge.CheckForUpdates()
 
 			select {
 			case update := <-updateCh:

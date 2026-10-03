@@ -22,6 +22,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/gluon/imap"
 	"github.com/ProtonMail/go-proton-api"
 	"github.com/stretchr/testify/require"
@@ -35,19 +36,24 @@ func TestApplyStage_CancelledJobIsDiscarded(t *testing.T) {
 
 	stage := NewApplyStage(input)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
-	jobCtx, jobCancel := context.WithCancel(context.Background())
+	jobCtx, jobCancel := context.WithCancel(t.Context())
+	t.Cleanup(jobCancel)
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 
 	tj.job.begin()
 	childJob := tj.job.newChildJob("f", 10)
 	tj.job.end()
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	jobCancel()
 	require.NoError(t, input.Produce(ctx, ApplyRequest{
@@ -56,8 +62,9 @@ func TestApplyStage_CancelledJobIsDiscarded(t *testing.T) {
 	}))
 
 	err := tj.job.waitAndClose(ctx)
-	require.ErrorIs(t, err, context.Canceled)
 	cancel()
+	group.CancelAndWait()
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestApplyStage_JobWithNoMessagesIsFinalized(t *testing.T) {
@@ -67,11 +74,12 @@ func TestApplyStage_JobWithNoMessagesIsFinalized(t *testing.T) {
 
 	stage := NewApplyStage(input)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	jobCtx := t.Context()
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any())
 	tj.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Eq("f"), gomock.Eq(int64(10)))
 
@@ -79,9 +87,12 @@ func TestApplyStage_JobWithNoMessagesIsFinalized(t *testing.T) {
 	childJob := tj.job.newChildJob("f", 10)
 	tj.job.end()
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, ApplyRequest{
 		childJob: childJob,
@@ -90,6 +101,7 @@ func TestApplyStage_JobWithNoMessagesIsFinalized(t *testing.T) {
 
 	err := tj.job.waitAndClose(ctx)
 	cancel()
+	group.CancelAndWait()
 	require.NoError(t, err)
 }
 
@@ -100,7 +112,8 @@ func TestApplyStage_ErrorOnApplyIsReportedAndJobFails(t *testing.T) {
 
 	stage := NewApplyStage(input)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	jobCtx := t.Context()
 
@@ -112,7 +125,7 @@ func TestApplyStage_ErrorOnApplyIsReportedAndJobFails(t *testing.T) {
 		},
 	}
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 
 	applyErr := errors.New("apply failed")
 	tj.updateApplier.EXPECT().ApplySyncUpdates(gomock.Any(), gomock.Eq(buildResults)).Return(applyErr)
@@ -121,9 +134,12 @@ func TestApplyStage_ErrorOnApplyIsReportedAndJobFails(t *testing.T) {
 	childJob := tj.job.newChildJob("f", 10)
 	tj.job.end()
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, ApplyRequest{
 		childJob: childJob,
@@ -132,5 +148,6 @@ func TestApplyStage_ErrorOnApplyIsReportedAndJobFails(t *testing.T) {
 
 	err := tj.job.waitAndClose(ctx)
 	cancel()
+	group.CancelAndWait()
 	require.ErrorIs(t, err, applyErr)
 }

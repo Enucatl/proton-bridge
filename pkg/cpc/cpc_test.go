@@ -34,13 +34,13 @@ func TestCPC_Receive(t *testing.T) {
 
 	cpc := NewCPC()
 
-	wg := sync.WaitGroup{}
+	var wg sync.WaitGroup
+	defer func() {
+		cpc.Close()
+		wg.Wait()
+	}()
 
-	go func() {
-		defer wg.Done()
-
-		wg.Add(1)
-
+	wg.Go(func() {
 		cpc.Receive(context.Background(), func(ctx context.Context, request *Request) {
 			switch request.Value().(type) {
 			case sendIntRequest:
@@ -51,7 +51,7 @@ func TestCPC_Receive(t *testing.T) {
 				panic("unknown request")
 			}
 		})
-	}()
+	})
 
 	r, err := cpc.Send(context.Background(), sendIntRequest{})
 	require.NoError(t, err)
@@ -59,7 +59,4 @@ func TestCPC_Receive(t *testing.T) {
 
 	_, err = cpc.Send(context.Background(), quitRequest{})
 	require.NoError(t, err)
-
-	cpc.Close()
-	wg.Wait()
 }

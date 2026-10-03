@@ -91,7 +91,7 @@ Hello
 
 			require.NoError(t, client.Append("Drafts", nil, time.Now(), strings.NewReader(literal)))
 			// Verify the draft is available in client.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				status, err := client.Status("Drafts", []go_imap.StatusItem{go_imap.StatusMessages})
 				require.NoError(t, err)
 				return status.Messages == 1
@@ -137,7 +137,7 @@ Hello
 			require.NoError(t, client.Append("Sent", nil, time.Now(), strings.NewReader(literal)))
 
 			// Verify the sent message gets updated with the new literal.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				// Check if sent message matches the latest draft.
 				messagesClient1, err := clientFetch(client, "Sent", "BODY[TEXT]", "BODY[]")
 				require.NoError(t, err)

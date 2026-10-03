@@ -111,7 +111,7 @@ func TestBridge_Send(t *testing.T) {
 
 			// Sender should have 10 messages in the sent folder.
 			// Recipient should have 10 messages in inbox.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				sent, err := senderIMAPClient.Status(`Sent`, []imap.StatusItem{imap.StatusMessages})
 				require.NoError(t, err)
 
@@ -313,14 +313,14 @@ func TestBridge_SendDraftFlags(t *testing.T) {
 			}
 
 			// Assert that the draft is eventually gone.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				status, err := imapClient.Select("Drafts", false)
 				require.NoError(t, err)
 				return status.Messages == 0
 			}, 30*time.Second, 1*time.Second)
 
 			// Assert that the message is eventually in the sent folder.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				messages, err := clientFetch(imapClient, "Sent")
 				require.NoError(t, err)
 				return len(messages) == 1
@@ -432,14 +432,14 @@ func TestBridge_SendInvite(t *testing.T) {
 			}
 
 			// Assert that the draft is eventually gone.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				status, err := imapClient.Select("Drafts", false)
 				require.NoError(t, err)
 				return status.Messages == 0
 			}, waitFor, 1*time.Second)
 
 			// Assert that the message is eventually in the sent folder.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				messages, err := clientFetch(imapClient, "Sent")
 				require.NoError(t, err)
 				return len(messages) == 1
@@ -584,7 +584,7 @@ SGVsbG8gd29ybGQK
 			require.NoError(t, recipientIMAPClient.Login(recipientInfo.Addresses[0], string(recipientInfo.BridgePass)))
 			defer recipientIMAPClient.Logout() //nolint:errcheck
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				messages, err := clientFetch(senderIMAPClient, `Sent`, imap.FetchBodyStructure)
 				require.NoError(t, err)
 				if len(messages) != 4 {
@@ -788,7 +788,7 @@ Hello world
 			require.NoError(t, recipientIMAPClient.Login(recipientInfo.Addresses[0], string(recipientInfo.BridgePass)))
 			defer recipientIMAPClient.Logout() //nolint:errcheck
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				messages, err := clientFetch(senderIMAPClient, `Sent`, imap.FetchBodyStructure)
 				require.NoError(t, err)
 				if len(messages) != 4 {

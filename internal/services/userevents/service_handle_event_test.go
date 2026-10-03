@@ -72,6 +72,7 @@ func TestServiceHandleEvent_CheckEventCategoriesHandledInOrder(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 
 	subscription := NewCallbackSubscriber("test", EventHandler{
 		UserHandler:      userHandler,
@@ -134,6 +135,7 @@ func TestServiceHandleEvent_CheckEventFailureCausesError(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 
 	subscription := NewCallbackSubscriber("test", EventHandler{
 		AddressHandler: addressHandler,
@@ -173,6 +175,7 @@ func TestServiceHandleEvent_CheckEventFailureCausesErrorParallel(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 
 	subscription := NewCallbackSubscriber("test", EventHandler{
 		AddressHandler: addressHandler,

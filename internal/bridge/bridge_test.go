@@ -116,9 +116,7 @@ func TestBridge_TLSIssue(t *testing.T) {
 			defer done()
 
 			// Simulate a TLS issue.
-			go func() {
-				mocks.TLSIssueCh <- struct{}{}
-			}()
+			mocks.TLSIssueCh <- struct{}{}
 
 			// Wait for the event.
 			require.IsType(t, events.TLSIssue{}, <-tlsEventCh)
@@ -262,7 +260,7 @@ func TestBridge_UserAgentFromSMTPClient(t *testing.T) {
 				),
 			))
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				currentUserAgent = b.GetCurrentUserAgent()
 
 				return strings.Contains(currentUserAgent, "UnknownClient/0.0.1")
@@ -741,7 +739,7 @@ func TestBridge_ChangeAddressOrder(t *testing.T) {
 			require.NoError(t, client.Login(info.Addresses[0], string(info.BridgePass)))
 			defer func() { _ = client.Logout() }()
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				status, err := client.Select(`Inbox`, false)
 				require.NoError(t, err)
 				return status.Messages == 10
@@ -873,6 +871,7 @@ func withBridgeNoMocks(
 		os.Getenv("BRIDGE_LOG_SMTP") == "1",
 	)
 	require.NoError(t, err)
+	defer bridge.Close(ctx)
 	require.Empty(t, bridge.GetErrors())
 
 	// Wait for bridge to finish loading users.
@@ -888,9 +887,6 @@ func withBridgeNoMocks(
 		// Wait for bridge to start the SMTP server.
 		waitForEvent(t, eventCh, events.SMTPServerReady{})
 	}
-
-	// Close the bridge when done.
-	defer bridge.Close(ctx)
 
 	// Use the bridge.
 	tests(bridge)
@@ -979,12 +975,25 @@ func getConnectedUserIDs(t *testing.T, b *bridge.Bridge) []string {
 
 func chToType[In, Out any](inCh <-chan In, done func()) (<-chan Out, func()) {
 	outCh := make(chan Out)
+	stopped := make(chan struct{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
+		defer close(stopped)
 		defer close(outCh)
 
-		for in := range inCh {
+		for {
+			var in In
+			select {
+			case <-ctx.Done():
+				return
+			case value, ok := <-inCh:
+				if !ok {
+					return
+				}
+				in = value
+			}
+
 			out, ok := any(in).(Out)
 			if !ok {
 				panic(fmt.Sprintf("unexpected type %T", in))
@@ -1002,6 +1011,27 @@ func chToType[In, Out any](inCh <-chan In, done func()) (<-chan Out, func()) {
 	return outCh, func() {
 		cancel()
 		done()
+		<-stopped
+	}
+}
+
+// Run conditions on the test goroutine so fatal assertions and fixture cleanup
+// cannot race an unfinished testify.Eventually callback.
+// Blocking operations in the condition must have their own deadlines.
+func requireEventually(t *testing.T, condition func() bool, waitFor, tick time.Duration) {
+	t.Helper()
+
+	timer := time.NewTimer(waitFor)
+	defer timer.Stop()
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+
+	for !condition() {
+		select {
+		case <-timer.C:
+			t.Fatal("Condition never satisfied")
+		case <-ticker.C:
+		}
 	}
 }
 

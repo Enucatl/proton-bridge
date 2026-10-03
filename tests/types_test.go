@@ -532,7 +532,6 @@ func matchMailboxes(have, want []Mailbox) error {
 }
 
 func eventually(condition func() error) error {
-	ch := make(chan error, 1)
 	var lastErr error
 
 	var timerDuration = 30 * time.Second
@@ -547,23 +546,17 @@ func eventually(condition func() error) error {
 	ticker := time.NewTicker(timerDuration / 300)
 	defer ticker.Stop()
 
-	for tick := ticker.C; ; {
+	// ponytail: the deadline is checked between calls; use context-aware conditions if a call can block.
+	for {
 		select {
 		case <-timer.C:
 			return fmt.Errorf("eventually timed out: %w", lastErr)
 
-		case <-tick:
-			tick = nil
-
-			go func() { ch <- condition() }()
-
-		case err := <-ch:
-			if err == nil {
+		case <-ticker.C:
+			lastErr = condition()
+			if lastErr == nil {
 				return nil
 			}
-
-			lastErr = err
-			tick = ticker.C
 		}
 	}
 }

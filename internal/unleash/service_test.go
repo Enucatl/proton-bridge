@@ -36,17 +36,20 @@ func TestCloseUnblocksFlagDelivery(t *testing.T) {
 			t.Run(fmt.Sprintf("fetch%d/closeDuringFetch=%t", fetchAt, closeDuringFetch), func(t *testing.T) {
 				fetchStarted, releaseFetch, fetchFinished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 				calls := 0
-				s := newService(context.Background(), func(context.Context) (proton.FeatureFlagResult, error) {
+				s := newService(context.Background(), func(ctx context.Context) (proton.FeatureFlagResult, error) {
 					calls++
 					if calls == fetchAt {
 						close(fetchStarted)
-						<-releaseFetch
+						select {
+						case <-releaseFetch:
+						case <-ctx.Done():
+						}
 						close(fetchFinished)
 					}
 					return proton.FeatureFlagResult{Toggles: []proton.FeatureToggle{{Name: "enabled", Enabled: true}}}, nil
 				}, logrus.NewEntry(logrus.New()), filepath.Join(t.TempDir(), filename), async.NoopPanicHandler{})
-				t.Cleanup(s.Close)
 				done := make(chan struct{})
+				t.Cleanup(func() { s.Close(); <-done })
 				go func() {
 					defer close(done)
 					s.runFlagPoll()

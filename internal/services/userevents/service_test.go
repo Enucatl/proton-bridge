@@ -79,6 +79,7 @@ func TestService_EventIDLoadStore(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 
 	_, err := service.Start(context.Background(), group)
 	require.NoError(t, err)
@@ -136,6 +137,7 @@ func TestService_RetryEventOnNonCatastrophicFailure(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 	service.Subscribe(NewCallbackSubscriber("foo", EventHandler{MessageHandler: subscriber}))
 
 	_, err := service.Start(context.Background(), group)
@@ -187,8 +189,10 @@ func TestService_OnBadEventServiceIsPaused(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 
 	// Event publisher expectations.
+	badEvent := make(chan struct{})
 	eventPublisher.EXPECT().PublishEvent(gomock.Any(), events.UserBadEvent{
 		UserID:     "foo",
 		OldEventID: firstEventID,
@@ -196,11 +200,7 @@ func TestService_OnBadEventServiceIsPaused(t *testing.T) {
 		EventInfo:  secondEvent[0].String(),
 		Error:      fmt.Errorf("failed to apply message events: %w", badEventErr),
 	}).Do(func(_ context.Context, _ events.Event) {
-		group.Go(context.Background(), "", "", func(_ context.Context) {
-			// Use background context to avoid having the request cancelled
-			require.True(t, service.IsPaused())
-			group.Cancel()
-		})
+		close(badEvent)
 	})
 
 	service.Subscribe(NewCallbackSubscriber("foo", EventHandler{MessageHandler: subscriber}))
@@ -209,7 +209,9 @@ func TestService_OnBadEventServiceIsPaused(t *testing.T) {
 	require.NoError(t, err)
 
 	service.Resume()
-	group.Wait()
+	<-badEvent
+	require.True(t, service.IsPaused())
+	group.CancelAndWait()
 }
 
 func TestService_UnsubscribeDuringEventHandlingDoesNotCauseDeadlock(t *testing.T) {
@@ -255,6 +257,7 @@ func TestService_UnsubscribeDuringEventHandlingDoesNotCauseDeadlock(t *testing.T
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 
 	subscription := NewCallbackSubscriber("foo", EventHandler{MessageHandler: subscriber})
 
@@ -301,7 +304,11 @@ func TestService_UnsubscribeBeforeHandlingEventIsNotConsideredError(t *testing.T
 	})
 
 	// Event Source expectations.
-	eventSource.EXPECT().GetEvent(gomock.Any(), gomock.Eq(firstEventID)).MinTimes(1).Return(secondEvent, false, nil)
+	eventFetched := make(chan struct{})
+	eventSource.EXPECT().GetEvent(gomock.Any(), gomock.Eq(firstEventID)).Times(1).DoAndReturn(func(_ context.Context, _ string) ([]proton.Event, bool, error) {
+		close(eventFetched)
+		return secondEvent, false, nil
+	})
 	eventSource.EXPECT().GetEvent(gomock.Any(), gomock.Eq(secondEventID)).AnyTimes().Return(secondEvent, false, nil)
 
 	service := NewService(
@@ -316,15 +323,17 @@ func TestService_UnsubscribeBeforeHandlingEventIsNotConsideredError(t *testing.T
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 
 	subscription := NewEventSubscriber("Foo")
 
-	// start subscriber
-	group.Go(context.Background(), "", "", func(_ context.Context) {
+	// Unsubscribe once the service fetches the event, without receiving it.
+	group.Go(context.Background(), "", "", func(ctx context.Context) {
 		defer service.Unsubscribe(subscription)
-
-		// Simulate the reception of an event, but it is never handled due to unexpected exit
-		<-time.NewTicker(500 * time.Millisecond).C
+		select {
+		case <-eventFetched:
+		case <-ctx.Done():
+		}
 	})
 
 	service.Subscribe(subscription)
@@ -377,20 +386,11 @@ func TestService_WaitOnEventPublishAfterPause(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 
+	waiters := make(chan *EventPollWaiter, 1)
 	subscriber.EXPECT().HandleMessageEvents(gomock.Any(), gomock.Eq(messageEvents)).Times(1).DoAndReturn(func(_ context.Context, _ []proton.MessageEvent) error {
-		waiter := service.PauseWithWaiter()
-
-		go func() {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
-			defer cancel()
-
-			err := waiter.WaitPollFinished(ctx)
-			require.NoError(t, err)
-
-			group.Cancel()
-		}()
-
+		waiters <- service.PauseWithWaiter()
 		return nil
 	})
 
@@ -400,7 +400,10 @@ func TestService_WaitOnEventPublishAfterPause(t *testing.T) {
 	require.NoError(t, err)
 
 	service.Resume()
-	group.Wait()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, (<-waiters).WaitPollFinished(ctx))
+	group.CancelAndWait()
 }
 
 func TestService_EventRewind(t *testing.T) {
@@ -451,13 +454,12 @@ func TestService_EventRewind(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	defer func() { group.CancelAndWait(); service.Close() }()
 
 	_, err := service.Start(context.Background(), group)
 	require.NoError(t, err)
 
-	go func() {
-		require.NoError(t, service.RewindEventID(context.Background(), firstEventID))
-	}()
+	require.NoError(t, service.RewindEventID(context.Background(), firstEventID))
 
 	service.Resume()
 	group.Wait()

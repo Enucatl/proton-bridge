@@ -129,7 +129,7 @@ func TestBridge_User_BadMessage_BadEvent(t *testing.T) {
 		closeCh()
 
 		// The user will eventually be logged out due to the bad request errors.
-		require.Eventually(t, func() bool {
+		requireEventually(t, func() bool {
 			return len(bridge.GetUserIDs()) == 1 && len(getConnectedUserIDs(t, bridge)) == 0
 		}, 100*user.EventPeriod, user.EventPeriod)
 
@@ -538,7 +538,7 @@ func TestBridge_User_DropConn_NoBadEvent(t *testing.T) {
 			defer func() { _ = cli.Logout() }()
 
 			// The IMAP client will eventually see 20 messages.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				status, err := cli.Status("INBOX", []imap.StatusItem{imap.StatusMessages})
 				return err == nil && status.Messages == 20
 			}, 10*time.Second, 100*time.Millisecond)
@@ -812,7 +812,7 @@ func TestBridge_User_DisableEnableAddress(t *testing.T) {
 
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Eventually we shouldn't list the address.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				info, err := bridge.QueryUserInfo("user")
 				require.NoError(t, err)
 
@@ -827,7 +827,7 @@ func TestBridge_User_DisableEnableAddress(t *testing.T) {
 
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// Eventually we should list the address.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				info, err := bridge.QueryUserInfo("user")
 				require.NoError(t, err)
 
@@ -889,8 +889,8 @@ func TestBridge_User_HandleParentLabelRename(t *testing.T) {
 				require.NoError(t, err)
 
 				// Wait for the parent folder to be created.
-				require.Eventually(t, func() bool {
-					return slices.IndexFunc(clientList(cli), func(mailbox *imap.MailboxInfo) bool {
+				requireEventually(t, func() bool {
+					return slices.IndexFunc(clientList(t, cli), func(mailbox *imap.MailboxInfo) bool {
 						return mailbox.Name == fmt.Sprintf("Folders/%v", parentName)
 					}) >= 0
 				}, 100*user.EventPeriod, user.EventPeriod)
@@ -906,8 +906,8 @@ func TestBridge_User_HandleParentLabelRename(t *testing.T) {
 				require.Equal(t, parentLabel.ID, childLabel.ParentID)
 
 				// Wait for the parent folder to be created.
-				require.Eventually(t, func() bool {
-					return slices.IndexFunc(clientList(cli), func(mailbox *imap.MailboxInfo) bool {
+				requireEventually(t, func() bool {
+					return slices.IndexFunc(clientList(t, cli), func(mailbox *imap.MailboxInfo) bool {
 						return mailbox.Name == fmt.Sprintf("Folders/%v/%v", parentName, childName)
 					}) >= 0
 				}, 100*user.EventPeriod, user.EventPeriod)
@@ -921,15 +921,15 @@ func TestBridge_User_HandleParentLabelRename(t *testing.T) {
 				})))
 
 				// Wait for the parent folder to be renamed.
-				require.Eventually(t, func() bool {
-					return slices.IndexFunc(clientList(cli), func(mailbox *imap.MailboxInfo) bool {
+				requireEventually(t, func() bool {
+					return slices.IndexFunc(clientList(t, cli), func(mailbox *imap.MailboxInfo) bool {
 						return mailbox.Name == fmt.Sprintf("Folders/%v", newParentName)
 					}) >= 0
 				}, 100*user.EventPeriod, user.EventPeriod)
 
 				// Wait for the child folder to be renamed.
-				require.Eventually(t, func() bool {
-					return slices.IndexFunc(clientList(cli), func(mailbox *imap.MailboxInfo) bool {
+				requireEventually(t, func() bool {
+					return slices.IndexFunc(clientList(t, cli), func(mailbox *imap.MailboxInfo) bool {
 						return mailbox.Name == fmt.Sprintf("Folders/%v/%v", newParentName, childName)
 					}) >= 0
 				}, 100*user.EventPeriod, user.EventPeriod)
@@ -994,8 +994,8 @@ func userContinueEventProcess(
 	})
 
 	// Wait for the label to be created.
-	require.Eventually(t, func() bool {
-		return slices.IndexFunc(clientList(cli), func(mailbox *imap.MailboxInfo) bool {
+	requireEventually(t, func() bool {
+		return slices.IndexFunc(clientList(t, cli), func(mailbox *imap.MailboxInfo) bool {
 			return mailbox.Name == "Labels/"+randomLabel
 		}) >= 0
 	}, 100*user.EventPeriod, user.EventPeriod)
@@ -1003,13 +1003,15 @@ func userContinueEventProcess(
 
 func eventuallyDial(addr string) (cli *client.Client, err error) {
 	sleep := 1 * time.Second
+	dialer := &net.Dialer{Timeout: 30 * time.Second}
 	for range 5 {
 		if constants.IsContainer {
-			cli, err = client.DialTLS(addr, &tls.Config{InsecureSkipVerify: true})
+			cli, err = client.DialWithDialerTLS(dialer, addr, &tls.Config{InsecureSkipVerify: true})
 		} else {
-			cli, err = client.Dial(addr)
+			cli, err = client.DialWithDialer(dialer, addr)
 		}
 		if err == nil {
+			cli.Timeout = 30 * time.Second
 			return cli, nil
 		}
 		time.Sleep(sleep)

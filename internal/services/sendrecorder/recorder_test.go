@@ -19,6 +19,7 @@ package sendrecorder
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -110,10 +111,12 @@ func TestSendHasher_Wait_SendSuccess(t *testing.T) {
 	require.NotEmpty(t, hash)
 
 	// Simulate successfully sending the message after half a second.
-	go func() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {
 		time.Sleep(time.Millisecond * 500)
 		h.SignalMessageSent(hash, srID1, "abc")
-	}()
+	})
 
 	// Inserting a message with the same hash should fail.
 	srID2, _, ok, err := testTryInsert(h, literal1, time.Now().Add(time.Second))
@@ -132,10 +135,12 @@ func TestSendHasher_Wait_SendFail(t *testing.T) {
 	require.NotEmpty(t, hash)
 
 	// Simulate failing to send the message after half a second.
-	go func() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {
 		time.Sleep(time.Millisecond * 500)
 		h.RemoveOnFail(hash, srID1)
-	}()
+	})
 
 	// Inserting a message with the same hash should succeed because the first message failed to send.
 	srID2, hash2, ok, err := testTryInsert(h, literal1, time.Now().Add(time.Second))
@@ -190,10 +195,12 @@ func TestSendHasher_HasEntry_SendSuccess(t *testing.T) {
 	require.NotEmpty(t, hash)
 
 	// Simulate successfully sending the message after half a second.
-	go func() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {
 		time.Sleep(time.Millisecond * 500)
 		h.SignalMessageSent(hash, srID1, "abc")
-	}()
+	})
 
 	// The message was already sent; we should find it in the hasher.
 	messageID, ok, err := testHasEntry(h, literal1, time.Now().Add(time.Second))
@@ -282,10 +289,12 @@ func TestSendHasher_HasEntry_SendFail(t *testing.T) {
 	require.NotEmpty(t, hash)
 
 	// Simulate failing to send the message after half a second.
-	go func() {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {
 		time.Sleep(time.Millisecond * 500)
 		h.RemoveOnFail(hash, srID1)
-	}()
+	})
 
 	// The message failed to send; we should not find it in the hasher.
 	_, ok, err = testHasEntry(h, literal1, time.Now().Add(time.Second))

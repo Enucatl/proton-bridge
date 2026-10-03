@@ -59,6 +59,7 @@ type Service struct {
 	log            *logrus.Entry
 	eventPublisher events.EventPublisher
 	timer          *proton.Ticker
+	stopTimer      func()
 	eventTimeout   time.Duration
 	paused         uint32
 	panicHandler   async.PanicHandler
@@ -88,6 +89,8 @@ func NewService(
 	eventSubscription events.Subscription,
 	sentryReporter reporter.Reporter,
 ) *Service {
+	timer := proton.NewTicker(pollPeriod, jitter, panicHandler)
+
 	return &Service{
 		cpc:          cpc.NewCPC(),
 		userID:       userID,
@@ -98,7 +101,8 @@ func NewService(
 			"user":    userID,
 		}),
 		eventPublisher:    eventPublisher,
-		timer:             proton.NewTicker(pollPeriod, jitter, panicHandler),
+		timer:             timer,
+		stopTimer:         sync.OnceFunc(timer.Stop),
 		paused:            1,
 		eventTimeout:      eventTimeout,
 		panicHandler:      panicHandler,
@@ -202,7 +206,7 @@ func (s *Service) Start(ctx context.Context, group *orderedtasks.OrderedCancelGr
 func (s *Service) run(ctx context.Context, lastEventID string) {
 	s.log.Infof("Starting service Last EventID=%v", lastEventID)
 	defer s.cpc.Close()
-	defer s.timer.Stop()
+	defer s.stopTimer()
 	defer s.log.Info("Exiting service")
 
 	client := network.NewClientRetryWrapper(s.eventSource, &network.ExpCoolDown{})
@@ -320,6 +324,9 @@ func (s *Service) run(ctx context.Context, lastEventID string) {
 
 // Close should be called after the service has been cancelled to clean up any remaining pending operations.
 func (s *Service) Close() {
+	// Construction starts the ticker even when Start is never called or fails.
+	s.stopTimer()
+
 	if s.eventSubscription != nil {
 		s.eventSubscription.Remove(s.eventWatcher)
 		s.eventSubscription = nil

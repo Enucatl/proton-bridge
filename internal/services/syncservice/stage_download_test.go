@@ -188,9 +188,10 @@ func TestDownloadStage_Run(t *testing.T) {
 	input := NewChannelConsumerProducer[DownloadRequest]()
 	output := NewChannelConsumerProducer[BuildRequest]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
-	tj := newTestJob(ctx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, ctx, mockCtrl, "", map[string]proton.Label{})
 
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any())
 	tj.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Eq("f"), gomock.Eq(int64(10))).Return(nil)
@@ -205,16 +206,20 @@ func TestDownloadStage_Run(t *testing.T) {
 
 	msgIDs, expected := buildDownloadStageData(&tj, 56, false)
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, DownloadRequest{
 		childJob: childJob,
 		ids:      msgIDs,
 	}))
 
-	out, err := output.Consume(ctx)
+	out, err := output.Consume(tj.job.ctx)
+	group.CancelAndWait()
 	require.NoError(t, err)
 	require.Equal(t, expected, out.batch)
 	out.onFinished(ctx)
@@ -231,9 +236,10 @@ func TestDownloadStage_RunWith422(t *testing.T) {
 	input := NewChannelConsumerProducer[DownloadRequest]()
 	output := NewChannelConsumerProducer[BuildRequest]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
-	tj := newTestJob(ctx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, ctx, mockCtrl, "", map[string]proton.Label{})
 
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any())
 	tj.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Eq("f"), gomock.Eq(int64(10))).Return(nil)
@@ -248,16 +254,20 @@ func TestDownloadStage_RunWith422(t *testing.T) {
 
 	msgIDs, expected := buildDownloadStageData(&tj, 56, true)
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, DownloadRequest{
 		childJob: childJob,
 		ids:      msgIDs,
 	}))
 
-	out, err := output.Consume(ctx)
+	out, err := output.Consume(tj.job.ctx)
+	group.CancelAndWait()
 	require.NoError(t, err)
 	require.Equal(t, expected, out.batch)
 	out.onFinished(ctx)
@@ -274,11 +284,13 @@ func TestDownloadStage_CancelledJobIsDiscarded(t *testing.T) {
 	input := NewChannelConsumerProducer[DownloadRequest]()
 	output := NewChannelConsumerProducer[BuildRequest]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
-	jobCtx, jobCancel := context.WithCancel(context.Background())
+	jobCtx, jobCancel := context.WithCancel(t.Context())
+	t.Cleanup(jobCancel)
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 
 	tj.job.begin()
 	defer tj.job.end()
@@ -286,9 +298,12 @@ func TestDownloadStage_CancelledJobIsDiscarded(t *testing.T) {
 
 	stage := NewDownloadStage(input, output, 4, &async.NoopPanicHandler{})
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	jobCancel()
 
@@ -297,7 +312,8 @@ func TestDownloadStage_CancelledJobIsDiscarded(t *testing.T) {
 		ids:      nil,
 	}))
 
-	go func() { cancel() }()
+	cancel()
+	group.CancelAndWait()
 
 	_, err := output.Consume(context.Background())
 	require.ErrorIs(t, err, ErrNoMoreInput)
@@ -309,13 +325,14 @@ func TestDownloadStage_JobAbortsOnMessageDownloadError(t *testing.T) {
 	input := NewChannelConsumerProducer[DownloadRequest]()
 	output := NewChannelConsumerProducer[BuildRequest]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	jobCtx := t.Context()
 
 	expectedErr := errors.New("fail")
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 	tj.client.EXPECT().GetMessage(gomock.Any(), gomock.Any()).Return(proton.Message{}, expectedErr)
 
 	tj.job.begin()
@@ -324,9 +341,12 @@ func TestDownloadStage_JobAbortsOnMessageDownloadError(t *testing.T) {
 
 	stage := NewDownloadStage(input, output, 4, &async.NoopPanicHandler{})
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, DownloadRequest{
 		childJob: childJob,
@@ -334,9 +354,9 @@ func TestDownloadStage_JobAbortsOnMessageDownloadError(t *testing.T) {
 	}))
 
 	err := tj.job.waitAndClose(ctx)
-	require.Equal(t, expectedErr, err)
-
 	cancel()
+	group.CancelAndWait()
+	require.Equal(t, expectedErr, err)
 
 	_, err = output.Consume(context.Background())
 	require.ErrorIs(t, err, ErrNoMoreInput)
@@ -348,13 +368,14 @@ func TestDownloadStage_JobAbortsOnAttachmentDownloadError(t *testing.T) {
 	input := NewChannelConsumerProducer[DownloadRequest]()
 	output := NewChannelConsumerProducer[BuildRequest]()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
 	jobCtx := t.Context()
 
 	expectedErr := errors.New("fail")
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 	tj.client.EXPECT().GetMessage(gomock.Any(), gomock.Any()).Return(proton.Message{
 		MessageMetadata: proton.MessageMetadata{
 			ID: "msg",
@@ -374,9 +395,12 @@ func TestDownloadStage_JobAbortsOnAttachmentDownloadError(t *testing.T) {
 
 	stage := NewDownloadStage(input, output, 4, &async.NoopPanicHandler{})
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, DownloadRequest{
 		childJob: childJob,
@@ -384,9 +408,9 @@ func TestDownloadStage_JobAbortsOnAttachmentDownloadError(t *testing.T) {
 	}))
 
 	err := tj.job.waitAndClose(ctx)
-	require.Equal(t, expectedErr, err)
-
 	cancel()
+	group.CancelAndWait()
+	require.Equal(t, expectedErr, err)
 
 	_, err = output.Consume(context.Background())
 	require.ErrorIs(t, err, ErrNoMoreInput)

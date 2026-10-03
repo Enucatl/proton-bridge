@@ -322,7 +322,10 @@ func (s *scenario) imapClientSeesTheFollowingMailboxInfoForMailbox(clientID, mai
 func (s *scenario) imapClientSeesMailbox(clientID, mailbox string) error {
 	_, client := s.t.getIMAPClient(clientID)
 
-	mailboxes := clientList(client)
+	mailboxes, err := clientList(client)
+	if err != nil {
+		return err
+	}
 
 	if !slices.Contains(xslices.Map(mailboxes, func(info *imap.MailboxInfo) string { return info.Name }), mailbox) {
 		return fmt.Errorf("expected %v to contain %v but it doesn't", mailboxes, mailbox)
@@ -334,7 +337,10 @@ func (s *scenario) imapClientSeesMailbox(clientID, mailbox string) error {
 func (s *scenario) imapClientDoesNotSeeMailbox(clientID, mailbox string) error {
 	_, client := s.t.getIMAPClient(clientID)
 
-	mailboxes := clientList(client)
+	mailboxes, err := clientList(client)
+	if err != nil {
+		return err
+	}
 
 	if slices.Contains(xslices.Map(mailboxes, func(info *imap.MailboxInfo) string { return info.Name }), mailbox) {
 		return fmt.Errorf("expected %v to not contain %v but it does", mailboxes, mailbox)
@@ -346,7 +352,10 @@ func (s *scenario) imapClientDoesNotSeeMailbox(clientID, mailbox string) error {
 func (s *scenario) imapClientCountsMailboxesUnder(clientID string, count int, parent string) error {
 	_, client := s.t.getIMAPClient(clientID)
 
-	mailboxes := clientList(client)
+	mailboxes, err := clientList(client)
+	if err != nil {
+		return err
+	}
 
 	mailboxes = utils.Filter(mailboxes, func(info *imap.MailboxInfo) bool {
 		return strings.HasPrefix(info.Name, parent) && info.Name != parent
@@ -814,20 +823,23 @@ func (s *scenario) imapClientDoesNotSeeHeaderInMessageWithSubject(clientID, head
 	return nil
 }
 
-func clientList(client *client.Client) []*imap.MailboxInfo {
+func clientList(client *client.Client) ([]*imap.MailboxInfo, error) {
 	resCh := make(chan *imap.MailboxInfo)
+	done := make(chan error, 1)
 
 	go func() {
-		if err := client.List("", "*", resCh); err != nil {
-			panic(err)
-		}
+		done <- client.List("", "*", resCh)
 	}()
 
-	return iterator.Collect(iterator.Chan(resCh))
+	result := iterator.Collect(iterator.Chan(resCh))
+	return result, <-done
 }
 
 func clientStatus(client *client.Client) ([]*imap.MailboxStatus, error) {
-	list := clientList(client)
+	list, err := clientList(client)
+	if err != nil {
+		return nil, err
+	}
 
 	status := make([]*imap.MailboxStatus, 0, len(list))
 
@@ -869,18 +881,18 @@ func clientFetch(client *client.Client, mailbox string) ([]*imap.Message, error)
 	}
 
 	resCh := make(chan *imap.Message)
+	done := make(chan error, 1)
 
 	go func() {
-		if err := client.Fetch(
+		done <- client.Fetch(
 			&imap.SeqSet{Set: []imap.Seq{{Start: 1, Stop: status.Messages}}},
 			[]imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, "BODY.PEEK[]"},
 			resCh,
-		); err != nil {
-			panic(err)
-		}
+		)
 	}()
 
-	return iterator.Collect(iterator.Chan(resCh)), nil
+	result := iterator.Collect(iterator.Chan(resCh))
+	return result, <-done
 }
 
 func clientFetchSequence(client *client.Client, sequenceSet string, isUID bool) ([]*imap.Message, error) {
@@ -890,28 +902,18 @@ func clientFetchSequence(client *client.Client, sequenceSet string, isUID bool) 
 	}
 
 	resCh := make(chan *imap.Message)
+	done := make(chan error, 1)
+	fetch := client.Fetch
+	if isUID {
+		fetch = client.UidFetch
+	}
 
 	go func() {
-		if isUID {
-			if err := client.UidFetch(
-				seqSet,
-				[]imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, "BODY.PEEK[]"},
-				resCh,
-			); err != nil {
-				panic(err)
-			}
-		} else {
-			if err := client.Fetch(
-				seqSet,
-				[]imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, "BODY.PEEK[]"},
-				resCh,
-			); err != nil {
-				panic(err)
-			}
-		}
+		done <- fetch(seqSet, []imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, "BODY.PEEK[]"}, resCh)
 	}()
 
-	return iterator.Collect(iterator.Chan(resCh)), nil
+	result := iterator.Collect(iterator.Chan(resCh))
+	return result, <-done
 }
 
 func clientCopy(client *client.Client, from, to string, uid ...uint32) error {
@@ -966,27 +968,23 @@ func clientMove(client *client.Client, from, to string, uid ...uint32) error {
 
 func clientStore(client *client.Client, from, to int, isUID bool, item imap.StoreItem, flags ...string) ([]*imap.Message, error) { //nolint:unparam
 	resCh := make(chan *imap.Message)
+	done := make(chan error, 1)
+	store := client.Store
+	if isUID {
+		store = client.UidStore
+	}
 
 	go func() {
-		var storeFunc func(seqset *imap.SeqSet, item imap.StoreItem, value any, ch chan *imap.Message) error
-
-		if isUID {
-			storeFunc = client.UidStore
-		} else {
-			storeFunc = client.Store
-		}
-
-		if err := storeFunc(
+		done <- store(
 			&imap.SeqSet{Set: []imap.Seq{{Start: uint32(from), Stop: uint32(to)}}},
 			item,
 			xslices.Map(flags, func(flag string) any { return flag }),
 			resCh,
-		); err != nil {
-			panic(err)
-		}
+		)
 	}()
 
-	return iterator.Collect(iterator.Chan(resCh)), nil
+	result := iterator.Collect(iterator.Chan(resCh))
+	return result, <-done
 }
 
 func clientAppend(client *client.Client, mailbox string, literal string) error {

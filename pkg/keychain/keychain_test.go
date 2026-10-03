@@ -59,17 +59,13 @@ func TestInsertReadRemove(t *testing.T) {
 		nJobs := 100
 		nWorkers := 3
 		jobs := make(chan any, nJobs)
-		done := make(chan any)
+		done := make(chan struct{}, nWorkers)
+		errors := make(chan error, nJobs)
 		for range nWorkers {
 			go func() {
-				for {
-					_, more := <-jobs
-					if more {
-						require.NoError(t, keychain.Put(id, expectedSecret))
-					} else {
-						done <- nil
-						return
-					}
+				defer func() { done <- struct{}{} }()
+				for range jobs {
+					errors <- keychain.Put(id, expectedSecret)
 				}
 			}()
 		}
@@ -80,6 +76,10 @@ func TestInsertReadRemove(t *testing.T) {
 		close(jobs)
 		for range nWorkers {
 			<-done
+		}
+		close(errors)
+		for err := range errors {
+			require.NoError(t, err)
 		}
 
 		// Check list.

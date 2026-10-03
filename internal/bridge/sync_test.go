@@ -314,7 +314,7 @@ func TestBridge_SyncWithOngoingEvents(t *testing.T) {
 				defer func() { _ = client.Logout() }()
 
 				// Check that the new messages arrive in the right location.
-				require.Eventually(t, func() bool {
+				requireEventually(t, func() bool {
 					status, err := client.Select(`Folders/folder2`, true)
 					if err != nil {
 						return false
@@ -432,7 +432,7 @@ func TestBridge_RefreshDuringSyncRestartSync(t *testing.T) {
 			require.Equal(t, userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, bridge, userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, userID) == refreshEventID
 			}, 5*time.Second, 10*time.Millisecond)
 			require.NotEqual(t, initialBookmark, refreshEventID)
@@ -597,7 +597,7 @@ func TestBridge_MessageCreateDuringSync(t *testing.T) {
 			require.NoError(t, client.Login(info.Addresses[0], string(info.BridgePass)))
 			defer func() { _ = client.Logout() }()
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				// Finally check if the 20 messages are in INBOX.
 				status, err := client.Status("INBOX", []imap.StatusItem{imap.StatusMessages})
 
@@ -753,7 +753,7 @@ func TestBridge_AddressOrderChangeDuringSyncInCombinedModeDoesNotTriggerBadEvent
 				return
 			}
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				info, err := bridge.GetUserInfo(userID)
 				if err != nil {
 					return false
@@ -838,7 +838,7 @@ func latestAPIEventID(ctx context.Context, t *testing.T, s *server.Server, usern
 func requireStartSyncEventIDEventually(t *testing.T, b *bridge.Bridge, userID, want string) {
 	t.Helper()
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return loadLiveIMAPSyncStatus(t, b, userID).StartSyncEventID == want
 	}, 30*time.Second, 1*time.Second)
 }
@@ -848,7 +848,7 @@ func requireStartSyncEventIDEventuallyNotEmpty(t *testing.T, b *bridge.Bridge, u
 
 	var bookmark string
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		bookmark = loadLiveIMAPSyncStatus(t, b, userID).StartSyncEventID
 
 		return bookmark != ""
@@ -860,7 +860,7 @@ func requireStartSyncEventIDEventuallyNotEmpty(t *testing.T, b *bridge.Bridge, u
 func requireStartSyncEventIDEventuallyEmpty(t *testing.T, b *bridge.Bridge, userID string) {
 	t.Helper()
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return loadLiveIMAPSyncStatus(t, b, userID).StartSyncEventID == ""
 	}, 30*time.Second, 1*time.Second)
 }
@@ -870,6 +870,7 @@ func withClient(ctx context.Context, t *testing.T, s *server.Server, username st
 		proton.WithHostURL(s.GetHostURL()),
 		proton.WithTransport(proton.InsecureTransport()),
 	)
+	defer m.Close()
 
 	c, _, err := m.NewClientWithLogin(ctx, username, password)
 	require.NoError(t, err)
@@ -889,21 +890,21 @@ func clientFetch(client *client.Client, mailbox string, extraItems ...imap.Fetch
 	}
 
 	resCh := make(chan *imap.Message)
+	errCh := make(chan error, 1)
 
 	fetchItems := []imap.FetchItem{imap.FetchFlags, imap.FetchEnvelope, imap.FetchUid, imap.FetchBodyStructure, "BODY.PEEK[]"}
 	fetchItems = append(fetchItems, extraItems...)
 
 	go func() {
-		// client.Fetch always closes resCh via its own defer, even on error, so any error here is safe to ignore;
-		// panicking from this detached goroutine would crash the whole test regardless of what the caller is doing.
-		_ = client.Fetch(
+		errCh <- client.Fetch(
 			&imap.SeqSet{Set: []imap.Seq{{Start: 1, Stop: status.Messages}}},
 			fetchItems,
 			resCh,
 		)
 	}()
 
-	return iterator.Collect(iterator.Chan(resCh)), nil
+	messages := iterator.Collect(iterator.Chan(resCh))
+	return messages, <-errCh
 }
 
 func clientStore(client *client.Client, from, to int, isUID bool, item imap.StoreItem, flags ...string) error {
@@ -923,16 +924,19 @@ func clientStore(client *client.Client, from, to int, isUID bool, item imap.Stor
 	)
 }
 
-func clientList(client *client.Client) []*imap.MailboxInfo {
+func clientList(t *testing.T, client *client.Client) []*imap.MailboxInfo {
+	t.Helper()
+
 	resCh := make(chan *imap.MailboxInfo)
+	errCh := make(chan error, 1)
 
 	go func() {
-		// Same reason as in `clientFetch`, resCh is closed regardless  of error, so dropping the error
-		// avoids panicking from a detached goroutine.
-		_ = client.List("", "*", resCh)
+		errCh <- client.List("", "*", resCh)
 	}()
 
-	return iterator.Collect(iterator.Chan(resCh))
+	mailboxes := iterator.Collect(iterator.Chan(resCh))
+	require.NoError(t, <-errCh)
+	return mailboxes
 }
 
 func createNumMessages(ctx context.Context, t *testing.T, c *proton.Client, addrID, labelID string, count int) []string {

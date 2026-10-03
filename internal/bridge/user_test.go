@@ -110,7 +110,7 @@ func TestBridge_Login_DropConn(t *testing.T) {
 
 		withBridge(ctx, t, s.GetHostURL(), netCtl, locator, storeKey, func(bridge *bridge.Bridge, _ *bridgeMocks.Mocks) {
 			// The user is eventually connected.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return len(bridge.GetUserIDs()) == 1 && len(getConnectedUserIDs(t, bridge)) == 1
 			}, 5*time.Second, 100*time.Millisecond)
 		})
@@ -205,7 +205,7 @@ func TestBridge_LoginDeauthLogin(t *testing.T) {
 			require.NoError(t, s.RevokeUser(userID))
 
 			// The user is eventually disconnected.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return len(getConnectedUserIDs(t, bridge)) == 0
 			}, 10*time.Second, time.Second)
 
@@ -239,7 +239,7 @@ func TestBridge_LoginDeauthRestartLogin(t *testing.T) {
 			require.NoError(t, s.RevokeUser(userID))
 
 			// The user is eventually disconnected.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return len(getConnectedUserIDs(t, bridge)) == 0
 			}, 10*time.Second, time.Second)
 
@@ -326,7 +326,7 @@ func TestBridge_LoadWithoutInternet(t *testing.T) {
 			netCtl.Enable()
 
 			// The user will eventually be connected.
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return len(getConnectedUserIDs(t, bridge)) == 1 && getConnectedUserIDs(t, bridge)[0] == userID
 			}, 10*time.Second, time.Second)
 		})

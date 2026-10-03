@@ -134,8 +134,8 @@ func syncEventIDContinueEventProcess(
 		})))
 	})
 
-	require.Eventually(t, func() bool {
-		return slices.IndexFunc(clientList(cli), func(mailbox *imap.MailboxInfo) bool {
+	requireEventually(t, func() bool {
+		return slices.IndexFunc(clientList(t, cli), func(mailbox *imap.MailboxInfo) bool {
 			return mailbox.Name == "Labels/"+randomLabel
 		}) >= 0
 	}, 1*time.Minute, 10*time.Second)
@@ -169,7 +169,7 @@ func waitForAPIEventsBeyondInitialBookmark(
 	_, err := s.CreateLabel(userID, uuid.NewString(), "", proton.LabelTypeFolder)
 	require.NoError(t, err)
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return latestAPIEventID(ctx, t, s, "imap", password) != initialBookmark
 	}, 1*time.Minute, 10*time.Second)
 }
@@ -184,7 +184,7 @@ func requireBookmarksDiffer(t *testing.T, b1, b2 string) {
 func waitForUserConnected(t *testing.T, b *bridge.Bridge, userID string) {
 	t.Helper()
 
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return slices.Contains(getConnectedUserIDs(t, b), userID)
 	}, 30*time.Second, 1*time.Second)
 }
@@ -230,7 +230,7 @@ func TestBridge_SyncEventID_CompleteClearsBookmarkAndRewinds(t *testing.T) {
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == startBookmark
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -284,7 +284,7 @@ func TestBridge_SyncEventID_ResyncDuringInitialSync(t *testing.T) {
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == vaultEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -314,7 +314,7 @@ func TestBridge_SyncEventID_RefreshDuringInitialSync(t *testing.T) {
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == refreshEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -357,7 +357,7 @@ func TestBridge_SyncEventID_ResyncThenRefreshDuringInitialSync(t *testing.T) {
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == refreshEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -395,7 +395,7 @@ func TestBridge_SyncEventID_RefreshThenResyncDuringInitialSync(t *testing.T) {
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == resyncBookmark
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -429,7 +429,7 @@ func TestBridge_SyncEventID_RefreshAfterSyncComplete(t *testing.T) {
 			env.allowSync.Store(true)
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == refreshEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -459,7 +459,7 @@ func TestBridge_SyncEventID_ResyncAfterSyncComplete(t *testing.T) {
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == vaultEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -525,7 +525,7 @@ func TestBridge_SyncEventID_SplitModeThenRefreshDuringInitialSync(t *testing.T) 
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == refreshEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -560,7 +560,7 @@ func TestBridge_SyncEventID_ResyncThenSplitModeDuringInitialSync(t *testing.T) {
 			env.allowSync.Store(true)
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == vaultEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -600,7 +600,7 @@ func TestBridge_SyncEventID_BridgeStopsSyncingThenContinuesAndRewinds(t *testing
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == afterRestartBookmark
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -649,7 +649,7 @@ func TestBridge_SyncEventID_BridgeStopsThenContinuesAndRefreshEventHappens(t *te
 			require.Equal(t, env.userID, (<-syncFinishedCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == refreshEventID
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -712,7 +712,7 @@ func TestBridge_SyncEventID_BridgeRestartRefreshRestartContinuesSync(t *testing.
 			require.Equal(t, env.userID, (<-syncFinishedCh).UserID)
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
 
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == refreshBookmark
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -756,7 +756,7 @@ func TestBridge_SyncEventID_BridgeStopsSyncingThenContinuesAndResyncHappens(t *t
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == resyncBookmark
 			}, 30*time.Second, 1*time.Second)
 		})
@@ -795,7 +795,7 @@ func TestBridge_SyncEventID_BridgeStopsSyncingThenContinuesAndSplitModeToggles(t
 			env.allowSync.Store(true)
 			require.Equal(t, env.userID, (<-syncCh).UserID)
 			requireStartSyncEventIDEventuallyEmpty(t, b, env.userID)
-			require.Eventually(t, func() bool {
+			requireEventually(t, func() bool {
 				return loadVaultEventID(t, locator, storeKey, env.userID) == vaultEventID
 			}, 30*time.Second, 1*time.Second)
 		})

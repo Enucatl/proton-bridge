@@ -36,8 +36,10 @@ func serveSMTP(t *testing.T, server *smtp.Server, listener net.Listener) {
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	t.Cleanup(func() {
-		require.NoError(t, server.Close())
-		require.NoError(t, <-done)
+		err := server.Close()
+		serveErr := <-done
+		require.NoError(t, err)
+		require.NoError(t, serveErr)
 	})
 }
 

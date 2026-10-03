@@ -178,7 +178,7 @@ func TestBridge_Observability_UserMetric(t *testing.T) {
 //nolint:unparam
 func requireObservabilityMetricCountEventually(t *testing.T, s *server.Server, expected int, maxCooldownDuration, cooldownDuration time.Duration) {
 	t.Helper()
-	require.Eventually(t, func() bool {
+	requireEventually(t, func() bool {
 		return len(s.GetObservabilityStatistics().Metrics) == expected
 	}, maxCooldownDuration, cooldownDuration)
 }

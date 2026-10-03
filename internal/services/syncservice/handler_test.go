@@ -40,7 +40,7 @@ func TestTask_NoStateAndSucceeds(t *testing.T) {
 	labels := getTestLabels()
 	mockCtrl := gomock.NewController(t)
 
-	tt := newTestHandler(mockCtrl, "u")
+	tt := newTestHandler(t, mockCtrl, "u")
 
 	tt.addMessageSyncCompletedExpectation(MessageID, MessageDelta)
 
@@ -107,7 +107,7 @@ func TestTask_StateHasLabels(t *testing.T) {
 	labels := getTestLabels()
 
 	mockCtrl := gomock.NewController(t)
-	tt := newTestHandler(mockCtrl, "u")
+	tt := newTestHandler(t, mockCtrl, "u")
 
 	tt.addMessageSyncCompletedExpectation(MessageID, MessageDelta)
 
@@ -154,7 +154,7 @@ func TestTask_StateHasLabelsAndMessageCount(t *testing.T) {
 
 	mockCtrl := gomock.NewController(t)
 
-	tt := newTestHandler(mockCtrl, "u")
+	tt := newTestHandler(t, mockCtrl, "u")
 
 	tt.addMessageSyncCompletedExpectation(MessageID, MessageDelta)
 
@@ -189,7 +189,7 @@ func TestTask_StateHasSyncedState(t *testing.T) {
 
 	mockCtrl := gomock.NewController(t)
 
-	tt := newTestHandler(mockCtrl, "u")
+	tt := newTestHandler(t, mockCtrl, "u")
 
 	tt.syncState.EXPECT().GetSyncStatus(gomock.Any()).DoAndReturn(func(_ context.Context) (Status, error) {
 		return Status{
@@ -225,7 +225,7 @@ func TestTask_RepeatsOnSyncFailure(t *testing.T) {
 
 	mockCtrl := gomock.NewController(t)
 
-	tt := newTestHandler(mockCtrl, "u")
+	tt := newTestHandler(t, mockCtrl, "u")
 
 	tt.addMessageSyncCompletedExpectation(MessageID, MessageDelta)
 
@@ -343,7 +343,7 @@ func (t thandler) addMessageSyncCompletedExpectation(messageID string, delta int
 	})
 }
 
-func newTestHandler(mockCtrl *gomock.Controller, userID string) thandler { // nolint:unparam
+func newTestHandler(t *testing.T, mockCtrl *gomock.Controller, userID string) thandler { // nolint:unparam
 	regulator := NewMockRegulator(mockCtrl)
 	syncState := NewMockStateProvider(mockCtrl)
 	updateApplier := NewMockUpdateApplier(mockCtrl)
@@ -351,6 +351,8 @@ func newTestHandler(mockCtrl *gomock.Controller, userID string) thandler { // no
 	messageBuilder := NewMockMessageBuilder(mockCtrl)
 	syncReporter := NewMockReporter(mockCtrl)
 	task := NewHandler(regulator, client, userID, syncState, logrus.WithField("test", "test"), &async.NoopPanicHandler{}, sentry.NullSentryReporter{})
+
+	t.Cleanup(task.Close)
 
 	return thandler{
 		task:           task,

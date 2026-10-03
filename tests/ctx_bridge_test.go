@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -76,19 +77,11 @@ func (t *testCtx) startBridge() error {
 }
 
 func (t *testCtx) stopBridge() error {
-	if err := t.closeFrontendService(context.Background()); err != nil {
-		return fmt.Errorf("could not close frontend: %w", err)
-	}
-
-	if err := t.closeFrontendClient(); err != nil {
-		return fmt.Errorf("could not close frontend client: %w", err)
-	}
-
-	if err := t.closeBridge(context.Background()); err != nil {
-		return fmt.Errorf("could not close bridge: %w", err)
-	}
-
-	return nil
+	return errors.Join(
+		t.closeFrontendService(context.Background()),
+		t.closeFrontendClient(),
+		t.closeBridge(context.Background()),
+	)
 }
 
 func (t *testCtx) initBridge() (<-chan events.Event, error) {
@@ -223,13 +216,14 @@ func (t *testCtx) initFrontendService(eventCh <-chan events.Event) error {
 	t.mocks.Autostarter.EXPECT().Enable().AnyTimes()
 	t.mocks.Autostarter.EXPECT().IsEnabled().AnyTimes()
 
+	stopCh := make(chan struct{})
 	service, err := frontend.NewService(
 		&async.NoopPanicHandler{},
 		new(mockRestarter),
 		t.locator,
 		t.bridge,
 		eventCh,
-		make(chan struct{}),
+		stopCh,
 		true,
 		-1,
 	)
@@ -240,11 +234,11 @@ func (t *testCtx) initFrontendService(eventCh <-chan events.Event) error {
 	logrus.Info("Frontend service started")
 
 	t.service = service
+	t.serviceStop = stopCh
+	t.serviceErr = nil
 
 	t.serviceWG.Go(func() {
-		if err := service.Loop(); err != nil {
-			panic(err)
-		}
+		t.serviceErr = service.Loop()
 	})
 
 	return nil
@@ -255,17 +249,21 @@ func (t *testCtx) closeFrontendService(ctx context.Context) error {
 		return fmt.Errorf("frontend service is not started")
 	}
 
-	if _, err := t.client.Quit(ctx, &emptypb.Empty{}); err != nil {
-		return fmt.Errorf("could not quit frontend: %w", err)
+	var quitErr error
+	if t.client != nil {
+		_, quitErr = t.client.Quit(ctx, &emptypb.Empty{})
 	}
-
+	if t.client == nil || quitErr != nil {
+		close(t.serviceStop)
+	}
 	t.serviceWG.Wait()
 
 	logrus.Info("Frontend service stopped")
 
 	t.service = nil
+	t.serviceStop = nil
 
-	return nil
+	return errors.Join(quitErr, t.serviceErr)
 }
 
 func (t *testCtx) initFrontendClient() error {
@@ -317,13 +315,17 @@ func (t *testCtx) initFrontendClient() error {
 
 	stream, err := client.RunEventStream(context.Background(), &frontend.EventStreamRequest{ClientPlatform: runtime.GOOS})
 	if err != nil {
+		_ = conn.Close()
 		return fmt.Errorf("could not start event stream: %w", err)
 	}
 
 	eventCh := async.NewQueuedChannel[*frontend.StreamEvent](0, 0, async.NoopPanicHandler{}, "test-frontend-client")
 
-	go func() {
-		defer eventCh.CloseAndDiscardQueued()
+	t.clientWG.Go(func() {
+		defer func() {
+			eventCh.CloseAndDiscardQueued()
+			eventCh.Wait()
+		}()
 
 		for {
 			event, err := stream.Recv()
@@ -333,7 +335,7 @@ func (t *testCtx) initFrontendClient() error {
 
 			eventCh.Enqueue(event)
 		}
-	}()
+	})
 
 	logrus.Info("Frontend client started")
 
@@ -349,9 +351,8 @@ func (t *testCtx) closeFrontendClient() error {
 		return fmt.Errorf("frontend client is not started")
 	}
 
-	if err := t.clientConn.Close(); err != nil {
-		return fmt.Errorf("could not close frontend client connection: %w", err)
-	}
+	err := t.clientConn.Close()
+	t.clientWG.Wait()
 
 	logrus.Info("Frontend client stopped")
 
@@ -359,7 +360,7 @@ func (t *testCtx) closeFrontendClient() error {
 	t.clientConn = nil
 	t.clientEventCh = nil
 
-	return nil
+	return err
 }
 func (t *testCtx) expectProxyCtlAllowProxy() {
 	t.mocks.ProxyCtl.EXPECT().AllowProxy()

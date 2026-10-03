@@ -229,8 +229,9 @@ func TestBuildStage_SuccessRemovesFailedMessage(t *testing.T) {
 
 	labels := getTestLabels()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", labels)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	tj := newTestJob(t, ctx, mockCtrl, "u", labels)
 
 	msg := proton.FullMessage{
 		Message: proton.Message{
@@ -242,10 +243,9 @@ func TestBuildStage_SuccessRemovesFailedMessage(t *testing.T) {
 	}
 
 	tj.messageBuilder.EXPECT().WithKeys(gomock.Any()).DoAndReturn(func(f func(*crypto.KeyRing, map[string]*crypto.KeyRing) error) error {
-		require.NoError(t, f(nil, map[string]*crypto.KeyRing{
+		return f(nil, map[string]*crypto.KeyRing{
 			"addrID": {},
-		}))
-		return nil
+		})
 	})
 
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Eq(int64(10)))
@@ -268,14 +268,18 @@ func TestBuildStage_SuccessRemovesFailedMessage(t *testing.T) {
 
 	stage := NewBuildStage(input, output, 1024, &async.NoopPanicHandler{}, observabilityService, sentry.NullSentryReporter{}, unleash.NewNullUnleashService())
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, BuildRequest{childJob: childJob, batch: []proton.FullMessage{msg}}))
 
-	req, err := output.Consume(ctx)
+	req, err := output.Consume(tj.job.ctx)
 	cancel()
+	group.CancelAndWait()
 	require.NoError(t, err)
 	require.Len(t, req.messages, 1)
 	require.Equal(t, buildResult, req.messages[0])
@@ -290,8 +294,9 @@ func TestBuildStage_BuildFailureIsReportedButDoesNotCancelJob(t *testing.T) {
 
 	labels := getTestLabels()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", labels)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	tj := newTestJob(t, ctx, mockCtrl, "u", labels)
 
 	msg := proton.FullMessage{
 		Message: proton.Message{
@@ -303,10 +308,9 @@ func TestBuildStage_BuildFailureIsReportedButDoesNotCancelJob(t *testing.T) {
 	}
 
 	tj.messageBuilder.EXPECT().WithKeys(gomock.Any()).DoAndReturn(func(f func(*crypto.KeyRing, map[string]*crypto.KeyRing) error) error {
-		require.NoError(t, f(nil, map[string]*crypto.KeyRing{
+		return f(nil, map[string]*crypto.KeyRing{
 			"addrID": {},
-		}))
-		return nil
+		})
 	})
 
 	tj.job.begin()
@@ -324,14 +328,18 @@ func TestBuildStage_BuildFailureIsReportedButDoesNotCancelJob(t *testing.T) {
 
 	stage := NewBuildStage(input, output, 1024, &async.NoopPanicHandler{}, mockObservabilityService, sentry.NullSentryReporter{}, unleash.NewNullUnleashService())
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, BuildRequest{childJob: childJob, batch: []proton.FullMessage{msg}}))
 
-	req, err := output.Consume(ctx)
+	req, err := output.Consume(tj.job.ctx)
 	cancel()
+	group.CancelAndWait()
 	require.NoError(t, err)
 	require.Empty(t, req.messages)
 }
@@ -344,8 +352,9 @@ func TestBuildStage_FailedToLocateKeyRingIsReportedButDoesNotFailBuild(t *testin
 
 	labels := getTestLabels()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", labels)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	tj := newTestJob(t, ctx, mockCtrl, "u", labels)
 
 	msg := proton.FullMessage{
 		Message: proton.Message{
@@ -357,8 +366,7 @@ func TestBuildStage_FailedToLocateKeyRingIsReportedButDoesNotFailBuild(t *testin
 	}
 
 	tj.messageBuilder.EXPECT().WithKeys(gomock.Any()).DoAndReturn(func(f func(*crypto.KeyRing, map[string]*crypto.KeyRing) error) error {
-		require.NoError(t, f(nil, map[string]*crypto.KeyRing{}))
-		return nil
+		return f(nil, map[string]*crypto.KeyRing{})
 	})
 
 	tj.job.begin()
@@ -374,14 +382,18 @@ func TestBuildStage_FailedToLocateKeyRingIsReportedButDoesNotFailBuild(t *testin
 
 	stage := NewBuildStage(input, output, 1024, &async.NoopPanicHandler{}, observabilitySender, sentry.NullSentryReporter{}, unleash.NewNullUnleashService())
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, BuildRequest{childJob: childJob, batch: []proton.FullMessage{msg}}))
 
-	req, err := output.Consume(ctx)
+	req, err := output.Consume(tj.job.ctx)
 	cancel()
+	group.CancelAndWait()
 	require.NoError(t, err)
 	require.Empty(t, req.messages)
 }
@@ -394,8 +406,9 @@ func TestBuildStage_OtherErrorsFailJob(t *testing.T) {
 
 	labels := getTestLabels()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", labels)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	tj := newTestJob(t, ctx, mockCtrl, "u", labels)
 
 	msg := proton.FullMessage{
 		Message: proton.Message{
@@ -418,16 +431,19 @@ func TestBuildStage_OtherErrorsFailJob(t *testing.T) {
 
 	stage := NewBuildStage(input, output, 1024, &async.NoopPanicHandler{}, mocks.NewMockObservabilitySender(mockCtrl), sentry.NullSentryReporter{}, unleash.NewNullUnleashService())
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, BuildRequest{childJob: childJob, batch: []proton.FullMessage{msg}}))
 
 	err := tj.job.waitAndClose(ctx)
-	require.Equal(t, expectedErr, err)
-
 	cancel()
+	group.CancelAndWait()
+	require.Equal(t, expectedErr, err)
 
 	_, err = output.Consume(context.Background())
 	require.ErrorIs(t, err, ErrNoMoreInput)
@@ -450,19 +466,24 @@ func TestBuildStage_CancelledJobIsDiscarded(t *testing.T) {
 
 	stage := NewBuildStage(input, output, 1024, &async.NoopPanicHandler{}, mocks.NewMockObservabilitySender(mockCtrl), sentry.NullSentryReporter{}, unleash.NewNullUnleashService())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 
-	jobCtx, jobCancel := context.WithCancel(context.Background())
+	jobCtx, jobCancel := context.WithCancel(t.Context())
+	t.Cleanup(jobCancel)
 
-	tj := newTestJob(jobCtx, mockCtrl, "", map[string]proton.Label{})
+	tj := newTestJob(t, jobCtx, mockCtrl, "", map[string]proton.Label{})
 
 	tj.job.begin()
 	defer tj.job.end()
 	childJob := tj.job.newChildJob("f", 10)
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	jobCancel()
 	require.NoError(t, input.Produce(ctx, BuildRequest{
@@ -470,7 +491,8 @@ func TestBuildStage_CancelledJobIsDiscarded(t *testing.T) {
 		batch:    []proton.FullMessage{msg},
 	}))
 
-	go func() { cancel() }()
+	cancel()
+	group.CancelAndWait()
 
 	_, err := output.Consume(context.Background())
 	require.ErrorIs(t, err, ErrNoMoreInput)
@@ -484,8 +506,9 @@ func TestTask_EmptyInputDoesNotCrash(t *testing.T) {
 
 	labels := getTestLabels()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", labels)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	tj := newTestJob(t, ctx, mockCtrl, "u", labels)
 
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Eq(int64(10)))
 
@@ -495,14 +518,18 @@ func TestTask_EmptyInputDoesNotCrash(t *testing.T) {
 
 	stage := NewBuildStage(input, output, 1024, &async.NoopPanicHandler{}, mocks.NewMockObservabilitySender(mockCtrl), sentry.NullSentryReporter{}, unleash.NewNullUnleashService())
 
-	go func() {
-		stage.run(ctx)
-	}()
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() {
+		cancel()
+		group.CancelAndWait()
+	})
+	stage.Run(group)
 
 	require.NoError(t, input.Produce(ctx, BuildRequest{childJob: childJob, batch: []proton.FullMessage{}}))
 
-	req, err := output.Consume(ctx)
+	req, err := output.Consume(tj.job.ctx)
 	cancel()
+	group.CancelAndWait()
 	require.NoError(t, err)
 	require.Len(t, req.messages, 0)
 }

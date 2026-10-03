@@ -19,36 +19,38 @@ package userevents
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
+
 func TestChanneledSubscriber_CtxTimeoutDoesNotBlockFutureEvents(t *testing.T) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	subscriber := newChanneledSubscriber[int]("test")
-	defer subscriber.close()
-
-	go func() {
-		defer wg.Done()
-
-		// Send one event, that succeeds.
-		require.NoError(t, subscriber.handle(context.Background(), 30))
-
-		// Add an impossible deadline that fails immediately to simulate on event taking too long to send.
-		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Microsecond))
-		defer cancel()
-
-		err := subscriber.handle(ctx, 20)
-		require.Error(t, err)
-		require.True(t, errors.Is(err, context.DeadlineExceeded))
+	defer func() {
+		cancel()
+		wg.Wait()
+		subscriber.close()
 	}()
+	results := make(chan error, 2)
+
+	wg.Go(func() {
+		results <- subscriber.handle(ctx, 30)
+
+		// An expired deadline fails immediately without a receiver.
+		expired, cancel := context.WithDeadline(ctx, time.Unix(0, 0))
+		defer cancel()
+		results <- subscriber.handle(expired, 20)
+	})
 
 	// Receive first event. Notify success.
 	event, ok := <-subscriber.OnEventCh()
@@ -57,11 +59,12 @@ func TestChanneledSubscriber_CtxTimeoutDoesNotBlockFutureEvents(t *testing.T) {
 		require.Equal(t, 30, event)
 		return nil
 	})
-	wg.Wait()
+	require.NoError(t, <-results)
+	require.ErrorIs(t, <-results, context.DeadlineExceeded)
 
 	// Simulate reception of another event
 	wg.Go(func() {
-		require.NoError(t, subscriber.handle(context.Background(), 40))
+		results <- subscriber.handle(ctx, 40)
 	})
 
 	event, ok = <-subscriber.OnEventCh()
@@ -71,25 +74,24 @@ func TestChanneledSubscriber_CtxTimeoutDoesNotBlockFutureEvents(t *testing.T) {
 		return nil
 	})
 
-	wg.Wait()
+	require.NoError(t, <-results)
 }
 
 func TestChanneledSubscriber_ErrorReported(t *testing.T) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	subscriber := newChanneledSubscriber[int]("test")
-	defer subscriber.close()
+	defer func() {
+		cancel()
+		wg.Wait()
+		subscriber.close()
+	}()
+	results := make(chan error, 2)
 	reportedErr := fmt.Errorf("request failed")
 
-	go func() {
-		defer wg.Done()
-
-		// Send one event, that succeeds.
-		err := subscriber.handle(context.Background(), 30)
-		require.Error(t, err)
-		require.Equal(t, reportedErr, err)
-	}()
+	wg.Go(func() {
+		results <- subscriber.handle(ctx, 30)
+	})
 
 	// Receive first event. Notify success.
 	event, ok := <-subscriber.OnEventCh()
@@ -99,5 +101,5 @@ func TestChanneledSubscriber_ErrorReported(t *testing.T) {
 		return reportedErr
 	})
 
-	wg.Wait()
+	require.ErrorIs(t, <-results, reportedErr)
 }

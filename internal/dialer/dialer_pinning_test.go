@@ -42,7 +42,7 @@ func getRootURL() string {
 }
 
 func TestTLSPinValid(t *testing.T) {
-	called, _, _, _, cm := createClientWithPinningDialer(getRootURL())
+	called, _, _, _, cm := createClientWithPinningDialer(t, getRootURL())
 
 	_, _, _ = cm.NewClientWithLogin(context.Background(), "username", []byte("password")) //nolint:dogsled
 
@@ -50,7 +50,7 @@ func TestTLSPinValid(t *testing.T) {
 }
 
 func TestTLSPinBackup(t *testing.T) {
-	called, _, _, checker, cm := createClientWithPinningDialer(getRootURL())
+	called, _, _, checker, cm := createClientWithPinningDialer(t, getRootURL())
 	copyTrustedPins(checker)
 	checker.trustedPins[1] = checker.trustedPins[0]
 	checker.trustedPins[0] = ""
@@ -64,7 +64,7 @@ func TestTLSPinInvalid(t *testing.T) {
 	s := server.New()
 	defer s.Close()
 
-	called, _, _, _, cm := createClientWithPinningDialer(s.GetHostURL())
+	called, _, _, _, cm := createClientWithPinningDialer(t, s.GetHostURL())
 
 	_, _, _ = cm.NewClientWithLogin(context.Background(), "username", []byte("password")) //nolint:dogsled
 
@@ -74,7 +74,7 @@ func TestTLSPinInvalid(t *testing.T) {
 func TestTLSPinNoMatch(t *testing.T) {
 	skipIfProxyIsSet(t)
 
-	called, _, reporter, checker, cm := createClientWithPinningDialer(getRootURL())
+	called, _, reporter, checker, cm := createClientWithPinningDialer(t, getRootURL())
 
 	copyTrustedPins(checker)
 	for i := 0; i < len(checker.trustedPins); i++ {
@@ -148,16 +148,25 @@ func localPinningDialer(t *testing.T, verifyChain, trustPin bool) (*PinningTLSDi
 	return dialer, s.Listener.Addr().String()
 }
 
-func createClientWithPinningDialer(hostURL string) (*atomicUint64, *PinningTLSDialer, *TLSReporter, *TLSPinChecker, *proton.Manager) {
+func createClientWithPinningDialer(t *testing.T, hostURL string) (*atomicUint64, *PinningTLSDialer, *TLSReporter, *TLSPinChecker, *proton.Manager) {
+	t.Helper()
 	called := &atomicUint64{}
 
 	reporter := NewTLSReporter(hostURL, "appVersion", useragent.New(), TrustedAPIPins)
 	checker := NewTLSPinChecker(TrustedAPIPins)
 	dialer := NewPinningTLSDialer(NewBasicTLSDialer(hostURL), reporter, checker)
 
+	stop, done := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() { close(stop); <-done })
 	go func() {
-		for range dialer.GetTLSIssueCh() {
-			called.add(1)
+		defer close(done)
+		for {
+			select {
+			case <-dialer.GetTLSIssueCh():
+				called.add(1)
+			case <-stop:
+				return
+			}
 		}
 	}()
 

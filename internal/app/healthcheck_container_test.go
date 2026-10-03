@@ -30,6 +30,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -97,8 +98,8 @@ func TestContainerHealthcheckTLSAndGreeting(t *testing.T) {
 			if !test.plaintext {
 				listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12})
 			}
-			defer listener.Close()
 			done := make(chan struct{})
+			defer func() { listener.Close(); <-done }()
 			go func() {
 				defer close(done)
 				conn, err := listener.Accept()
@@ -131,10 +132,10 @@ func TestContainerHealthcheckBoundsGreetingWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
 	release := make(chan struct{})
-	defer close(release)
-	go func() {
+	var wg sync.WaitGroup
+	defer func() { close(release); listener.Close(); wg.Wait() }()
+	wg.Go(func() {
 		conn, err := listener.Accept()
 		if err != nil {
 			return
@@ -145,9 +146,9 @@ func TestContainerHealthcheckBoundsGreetingWait(t *testing.T) {
 			return
 		}
 		<-release
-	}()
+	})
 	result := make(chan error, 1)
-	go func() { result <- checkGreeting(listener.Addr().String(), "* OK", trusted) }()
+	wg.Go(func() { result <- checkGreeting(listener.Addr().String(), "* OK", trusted) })
 	select {
 	case err := <-result:
 		if err == nil {

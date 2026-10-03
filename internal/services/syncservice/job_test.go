@@ -30,24 +30,22 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func setupGoLeak() goleak.Option {
-	logrus.Trace("prepare for go leak")
-	return goleak.IgnoreCurrent()
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
 }
 
 func TestJob_WaitsOnChildren(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
-	tj := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 
 	tj.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Eq("1"), gomock.Eq(int64(0))).Return(nil)
 	tj.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Eq("2"), gomock.Eq(int64(1))).Return(nil)
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any()).Times(2)
 
-	go func() {
+	var workers sync.WaitGroup
+	t.Cleanup(workers.Wait)
+	workers.Go(func() {
 		tj.job.begin()
 		job1 := tj.job.newChildJob("1", 0)
 		job2 := tj.job.newChildJob("2", 1)
@@ -55,18 +53,15 @@ func TestJob_WaitsOnChildren(t *testing.T) {
 		job1.onFinished(context.Background())
 		job2.onFinished(context.Background())
 		tj.job.end()
-	}()
+	})
 
 	require.NoError(t, tj.job.waitAndClose(context.Background()))
 }
 
 func TestJob_WaitsOnAllChildrenOnError(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
-	tj := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 
 	tj.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Eq("1"), gomock.Eq(int64(0))).Return(nil)
 	tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any())
@@ -75,7 +70,9 @@ func TestJob_WaitsOnAllChildrenOnError(t *testing.T) {
 
 	startCh := make(chan struct{})
 
-	go func() {
+	var workers sync.WaitGroup
+	t.Cleanup(workers.Wait)
+	workers.Go(func() {
 		job1 := tj.job.newChildJob("1", 0)
 		job2 := tj.job.newChildJob("2", 1)
 
@@ -84,7 +81,7 @@ func TestJob_WaitsOnAllChildrenOnError(t *testing.T) {
 		job1.onFinished(context.Background())
 		job2.onError(jobErr)
 		tj.job.end()
-	}()
+	})
 
 	close(startCh)
 	err := tj.job.waitAndClose(context.Background())
@@ -93,26 +90,25 @@ func TestJob_WaitsOnAllChildrenOnError(t *testing.T) {
 }
 
 func TestJob_MultipleChildrenReportError(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
-	tj := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 
 	jobErr := errors.New("failed")
 
 	startCh := make(chan struct{})
 
 	wg := sync.WaitGroup{}
+	var workers sync.WaitGroup
+	t.Cleanup(workers.Wait)
 	for range 10 {
 		wg.Add(1)
-		go func() {
+		workers.Go(func() {
 			job := tj.job.newChildJob("1", 0)
 			wg.Done()
 			<-startCh
 			job.onError(jobErr)
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -124,106 +120,91 @@ func TestJob_MultipleChildrenReportError(t *testing.T) {
 }
 
 func TestJob_ChildFailureCancelsAllOtherChildJobs(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
-	tj := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 
 	jobErr := errors.New("failed")
 
 	failJob := tj.job.newChildJob("0", 1)
 
 	tj.job.begin()
-	wg := sync.WaitGroup{}
-	for range 10 {
-		wg.Go(func() {
-			job := tj.job.newChildJob("1", 0)
+	var workers sync.WaitGroup
+	t.Cleanup(func() { tj.job.cancel(); workers.Wait() })
+	cancelled := make([]bool, 10)
+	for i := range cancelled {
+		job := tj.job.newChildJob("1", 0)
+		workers.Go(func() {
 			<-job.getContext().Done()
-			require.ErrorIs(t, job.getContext().Err(), context.Canceled)
-			require.True(t, job.checkCancelled())
+			cancelled[i] = job.checkCancelled()
 		})
 	}
-	go func() {
-		failJob.onError(jobErr)
-		wg.Wait()
-		tj.job.end()
-	}()
+	failJob.onError(jobErr)
+	workers.Wait()
+	tj.job.end()
 
 	err := tj.job.waitAndClose(context.Background())
 	require.Error(t, err)
 	require.ErrorIs(t, err, jobErr)
+	for _, wasCancelled := range cancelled {
+		require.True(t, wasCancelled)
+	}
 }
 
 func TestJob_CtxCancelCancelsAllChildren(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
 
-	wg := sync.WaitGroup{}
-	for range 10 {
-		wg.Add(1)
-		go func() {
-			job := tj.job.newChildJob("1", 0)
-			wg.Done()
+	var workers sync.WaitGroup
+	t.Cleanup(func() { cancel(); workers.Wait() })
+	cancelled := make([]bool, 10)
+	for i := range cancelled {
+		job := tj.job.newChildJob("1", 0)
+		workers.Go(func() {
 			<-job.getContext().Done()
-			require.ErrorIs(t, job.getContext().Err(), context.Canceled)
-			require.True(t, job.checkCancelled())
-		}()
+			cancelled[i] = job.checkCancelled()
+		})
 	}
 
-	go func() {
-		wg.Wait()
-		tj.job.end()
-		cancel()
-	}()
+	tj.job.end()
+	cancel()
 
 	err := tj.job.waitAndClose(ctx)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
+	workers.Wait()
+	for _, wasCancelled := range cancelled {
+		require.True(t, wasCancelled)
+	}
 }
 
 func TestJob_CtxCancelBeforeBegin(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		wg.Wait()
-		cancel()
-		tj.job.end()
-	}()
-
-	wg.Done()
+	cancel()
+	tj.job.end()
 	err := tj.job.waitAndClose(ctx)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestJob_WithoutChildJobsCanBeTerminated(t *testing.T) {
-	options := setupGoLeak()
-	defer goleak.VerifyNone(t, options)
-
 	mockCtrl := gomock.NewController(t)
 
 	ctx := context.Background()
 
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
-	go func() {
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
+	var workers sync.WaitGroup
+	t.Cleanup(workers.Wait)
+	workers.Go(func() {
 		tj.job.begin()
 		tj.job.end()
-	}()
+	})
 	err := tj.job.waitAndClose(context.Background())
 	require.NoError(t, err)
 }
@@ -238,6 +219,7 @@ type tjob struct {
 }
 
 func newTestJob(
+	t *testing.T,
 	ctx context.Context,
 	mockCtrl *gomock.Controller,
 	userID string,
@@ -262,6 +244,7 @@ func newTestJob(
 		newDownloadCache(),
 		logrus.WithField("s", "test"),
 	)
+	cleanupTestJob(t, job)
 
 	return tjob{
 		job:            job,
@@ -271,4 +254,19 @@ func newTestJob(
 		syncReporter:   syncReporter,
 		state:          state,
 	}
+}
+
+// Register before stage workers so they stop before the waiter and mocks are cleaned up.
+func cleanupTestJob(t *testing.T, job *Job) {
+	t.Helper()
+	t.Cleanup(func() {
+		job.cancel()
+		select {
+		case <-job.jw.doneCh:
+		default:
+			job.close()
+		}
+		for range job.jw.doneCh {
+		}
+	})
 }

@@ -32,11 +32,13 @@ type eventCollector struct {
 	fwdCh  []*async.QueuedChannel[events.Event]
 	lock   sync.Mutex
 	wg     sync.WaitGroup
+	stopCh chan struct{}
 }
 
 func newEventCollector() *eventCollector {
 	return &eventCollector{
 		events: make(map[reflect.Type]*async.QueuedChannel[events.Event]),
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -51,11 +53,22 @@ func (c *eventCollector) collectFrom(eventCh <-chan events.Event) <-chan events.
 	c.wg.Add(1)
 
 	go func() {
-		defer fwdCh.CloseAndDiscardQueued()
 		defer c.wg.Done()
+		defer func() {
+			fwdCh.CloseAndDiscardQueued()
+			fwdCh.Wait()
+		}()
 
-		for event := range eventCh {
-			c.push(event)
+		for {
+			select {
+			case <-c.stopCh:
+				return
+			case event, ok := <-eventCh:
+				if !ok {
+					return
+				}
+				c.push(event)
+			}
 		}
 	}()
 
@@ -113,6 +126,7 @@ func (c *eventCollector) getEventCh(ofType events.Event) <-chan events.Event {
 }
 
 func (c *eventCollector) close() {
+	close(c.stopCh)
 	c.wg.Wait()
 
 	c.lock.Lock()
@@ -120,6 +134,7 @@ func (c *eventCollector) close() {
 
 	for _, eventCh := range c.events {
 		eventCh.CloseAndDiscardQueued()
+		eventCh.Wait()
 	}
 	c.events = nil
 }

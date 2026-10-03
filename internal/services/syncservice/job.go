@@ -95,8 +95,8 @@ func (j *Job) close() {
 }
 
 func (j *Job) onError(err error) {
-	defer j.jw.onTaskFinished(err)
-
+	// Record the cause before cancellation lets other children report context.Canceled.
+	j.jw.onTaskFinished(err)
 	j.cancel()
 }
 
@@ -129,12 +129,20 @@ func (j *Job) end() {
 
 // waitAndClose waits until the job has finished, the context got cancelled or an error occurred.
 func (j *Job) waitAndClose(ctx context.Context) error {
-	defer j.close()
+	defer func() {
+		// Join the waiter finalizer before closing its input.
+		for range j.jw.doneCh {
+		}
+		j.close()
+	}()
 	select {
 	case <-ctx.Done():
 		<-j.jw.doneCh
 		return ctx.Err()
 	case e := <-j.jw.doneCh:
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		return e
 	}
 }

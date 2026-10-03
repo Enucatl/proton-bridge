@@ -164,7 +164,9 @@ func getTestServer(t *testing.T, wantCookies []testCookie) *httptest.Server {
 	}))
 
 	mux.HandleFunc("/get", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Len(t, r.Cookies(), len(wantCookies))
+		if !assert.Len(t, r.Cookies(), len(wantCookies)) {
+			return
+		}
 
 		for k, v := range r.Cookies() {
 			assert.Equal(t, wantCookies[k].name, v.Name)

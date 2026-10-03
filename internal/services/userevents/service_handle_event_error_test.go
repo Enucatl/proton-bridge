@@ -52,6 +52,7 @@ func TestServiceHandleEventError_SubscriberEventUnwrapping(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 
 	lastEventID := "PrevEvent"
 	event := proton.Event{EventID: "MyEvent"}
@@ -91,6 +92,7 @@ func TestServiceHandleEventError_BadEventPutsServiceOnPause(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 	service.Resume()
 	lastEventID := "PrevEvent"
 	event := proton.Event{EventID: "MyEvent"}
@@ -126,6 +128,7 @@ func TestServiceHandleEventError_BadEventFromPublishTimeout(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 	lastEventID := "PrevEvent"
 	event := proton.Event{EventID: "MyEvent"}
 	err := ErrPublishTimeoutExceeded
@@ -158,6 +161,7 @@ func TestServiceHandleEventError_NoBadEventCheck(t *testing.T) {
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 	lastEventID := "PrevEvent"
 	event := proton.Event{EventID: "MyEvent"}
 	_, _ = service.handleEventError(context.Background(), lastEventID, event, context.Canceled)
@@ -185,6 +189,7 @@ func TestServiceHandleEventError_JsonUnmarshalEventProducesUncategorizedErrorEve
 		events.NewNullSubscription(),
 		sentry.NullSentryReporter{},
 	)
+	t.Cleanup(service.Close)
 	lastEventID := "PrevEvent"
 	event := proton.Event{EventID: "MyEvent"}
 	err := &json.UnmarshalTypeError{}

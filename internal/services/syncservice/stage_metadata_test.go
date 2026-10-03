@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"testing"
 
 	"github.com/ProtonMail/gluon/async"
@@ -40,7 +39,7 @@ const TestMaxMessages = 10
 func TestMetadataStage_RunFinishesWith429(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 
-	tj := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 	tj.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{
 		LastSyncedMessageID: "",
 	}, nil)
@@ -55,15 +54,20 @@ func TestMetadataStage_RunFinishesWith429(t *testing.T) {
 	messageSize := 100
 
 	msgs := setupMetadataSuccessRunWith429(&tj, numMessages, messageSize)
+	chunks := xslices.Chunk(msgs, TestMaxMessages)
+	for _, chunk := range chunks {
+		tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Eq(int64(len(chunk))))
+	}
 
-	go func() {
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() { cancel(); group.CancelAndWait() })
+	group.Once(func(ctx context.Context) {
 		metadata.run(ctx, TestMetadataPageSize, TestMaxMessages, &network.NoCoolDown{})
-	}()
+	})
 
 	require.NoError(t, input.Produce(ctx, tj.job))
 
-	for _, chunk := range xslices.Chunk(msgs, TestMaxMessages) {
-		tj.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Eq(int64(len(chunk))))
+	for _, chunk := range chunks {
 		req, err := output.Consume(ctx)
 		require.NoError(t, err)
 		require.Equal(t, req.ids, xslices.Map(chunk, func(m proton.MessageMetadata) string {
@@ -71,13 +75,14 @@ func TestMetadataStage_RunFinishesWith429(t *testing.T) {
 		}))
 	}
 	cancel()
+	group.CancelAndWait()
 }
 
 func TestMetadataStage_JobCorrectlyFinishesAfterCancel(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 
 	jobCtx, jobCancel := context.WithCancel(context.Background())
-	tj := newTestFixedMetadataJob(jobCtx, mockCtrl, "u", getTestLabels())
+	tj := newTestFixedMetadataJob(t, jobCtx, mockCtrl, "u", getTestLabels())
 	tj.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{
 		LastSyncedMessageID: "",
 	}, nil)
@@ -90,9 +95,11 @@ func TestMetadataStage_JobCorrectlyFinishesAfterCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	metadata := NewMetadataStage(input, output, TestMaxDownloadMem, &async.NoopPanicHandler{})
 
-	go func() {
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() { jobCancel(); cancel(); group.CancelAndWait() })
+	group.Once(func(ctx context.Context) {
 		metadata.run(ctx, TestMetadataPageSize, TestMaxMessages, &network.NoCoolDown{})
-	}()
+	})
 
 	{
 		err := input.Produce(ctx, tj.job)
@@ -103,13 +110,10 @@ func TestMetadataStage_JobCorrectlyFinishesAfterCancel(t *testing.T) {
 	request, err := output.Consume(ctx)
 	require.NoError(t, err)
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	// The next stages should check whether the job has been cancelled or not. Here we need to do it manually.
-	go func() {
-		wg.Done()
+	group.Once(func(ctx context.Context) {
 		for {
-			req, err := output.Consume(ctx)
+			req, err := output.Consume(context.Background())
 			if err != nil {
 				return
 			}
@@ -118,24 +122,24 @@ func TestMetadataStage_JobCorrectlyFinishesAfterCancel(t *testing.T) {
 			jobCancel()
 			req.checkCancelled()
 		}
-	}()
-	wg.Wait()
+	})
 	request.onFinished(ctx)
 	err = tj.job.waitAndClose(ctx)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.Canceled)
 	cancel()
+	group.CancelAndWait()
 }
 
 func TestMetadataStage_RunInterleaved(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 
-	tj1 := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj1 := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 	tj1.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{}, nil)
 	tj1.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	tj1.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any()).AnyTimes()
 
-	tj2 := newTestJob(context.Background(), mockCtrl, "u", getTestLabels())
+	tj2 := newTestJob(t, context.Background(), mockCtrl, "u", getTestLabels())
 	tj2.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{}, nil)
 	tj2.state.EXPECT().SetLastMessageID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	tj2.syncReporter.EXPECT().OnProgress(gomock.Any(), gomock.Any()).AnyTimes()
@@ -152,36 +156,39 @@ func TestMetadataStage_RunInterleaved(t *testing.T) {
 	setupMetadataSuccessRunWith429(&tj1, numMessages, messageSize)
 	setupMetadataSuccessRunWith429(&tj2, numMessages, messageSize)
 
-	go func() {
+	group := async.NewGroup(ctx, &async.NoopPanicHandler{})
+	t.Cleanup(func() { cancel(); group.CancelAndWait() })
+	group.Once(func(ctx context.Context) {
 		metadata.run(ctx, TestMetadataPageSize, TestMaxMessages, &network.NoCoolDown{})
-	}()
+	})
 
-	go func() {
-		require.NoError(t, input.Produce(ctx, tj1.job))
-		require.NoError(t, input.Produce(ctx, tj2.job))
-	}()
+	require.NoError(t, input.Produce(ctx, tj1.job))
+	require.NoError(t, input.Produce(ctx, tj2.job))
 
-	go func() {
+	consumeErr := make(chan error, 1)
+	group.Once(func(ctx context.Context) {
 		for {
-			req, err := output.Consume(ctx)
+			req, err := output.Consume(context.Background())
 			if err != nil {
-				require.ErrorIs(t, err, context.Canceled)
+				consumeErr <- err
 				return
 			}
 
 			req.onFinished(ctx)
 		}
-	}()
+	})
 
 	require.NoError(t, tj1.job.waitAndClose(ctx))
 	require.NoError(t, tj2.job.waitAndClose(ctx))
 	cancel()
+	group.CancelAndWait()
+	require.ErrorIs(t, <-consumeErr, ErrNoMoreInput)
 }
 
 func TestMetadataIterator_ExitNoMoreMetadata(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	ctx := context.Background()
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
 
 	tj.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{
 		LastSyncedMessageID: "foo",
@@ -201,7 +208,7 @@ func TestMetadataIterator_ExitNoMoreMetadata(t *testing.T) {
 func TestMetadataIterator_ExitLastCallAlwaysReturnLastMessageID(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	ctx := context.Background()
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
 
 	tj.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{
 		LastSyncedMessageID: "foo",
@@ -229,7 +236,7 @@ func TestMetadataIterator_ExitLastCallAlwaysReturnLastMessageID(t *testing.T) {
 func TestMetadataIterator_ExitWithRemainingReturnsNoMore(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	ctx := context.Background()
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
 
 	tj.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{}, nil)
 
@@ -280,7 +287,7 @@ func TestMetadataIterator_ExitWithRemainingReturnsNoMore(t *testing.T) {
 func TestMetadataIterator_RespectsSizeLimit(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	ctx := context.Background()
-	tj := newTestJob(ctx, mockCtrl, "u", getTestLabels())
+	tj := newTestJob(t, ctx, mockCtrl, "u", getTestLabels())
 
 	tj.state.EXPECT().GetSyncStatus(gomock.Any()).Return(Status{}, nil)
 
@@ -385,6 +392,7 @@ func setupMetadataSuccessRunWith429(tj *tjob, msgCount int, msgSize int) []proto
 }
 
 func newTestFixedMetadataJob(
+	t *testing.T,
 	ctx context.Context,
 	mockCtrl *gomock.Controller,
 	userID string,
@@ -409,6 +417,7 @@ func newTestFixedMetadataJob(
 		newDownloadCache(),
 		logrus.WithField("s", "test"),
 	)
+	cleanupTestJob(t, job)
 
 	return tjob{
 		job:            job,
