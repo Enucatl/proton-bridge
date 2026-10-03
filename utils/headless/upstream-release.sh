@@ -107,11 +107,11 @@ validate_version() {
     [[ $version == "${RELEASE_TAG#v}" ]] || fail "Makefile version $version does not match $RELEASE_TAG"
     for target in build check smoke; do
         grep -Fxq "headless-$target:" "$SYNC_STATE/Makefile" || fail "Missing headless-$target target"
-        git cat-file -e "$tree:scripts/headless/$target.sh" || fail "Missing fork $target script"
+        git cat-file -e "$tree:utils/headless/$target.sh" || fail "Missing fork $target script"
     done
-    grep -Fxq $'\t./scripts/headless/run.sh build' "$SYNC_STATE/Makefile" || fail 'Changed headless build recipe'
-    grep -Fxq $'\t./scripts/headless/run.sh check' "$SYNC_STATE/Makefile" || fail 'Changed headless check recipe'
-    grep -Fxq $'\t./scripts/headless/smoke.sh' "$SYNC_STATE/Makefile" || fail 'Changed headless smoke recipe'
+    grep -Fxq $'\t./utils/headless/run.sh build' "$SYNC_STATE/Makefile" || fail 'Changed headless build recipe'
+    grep -Fxq $'\t./utils/headless/run.sh check' "$SYNC_STATE/Makefile" || fail 'Changed headless check recipe'
+    grep -Fxq $'\t./utils/headless/smoke.sh' "$SYNC_STATE/Makefile" || fail 'Changed headless smoke recipe'
 }
 
 package_resolution() {

@@ -36,7 +36,7 @@ jobs:
           persist-credentials: false
       - name: Save trusted sync script outside the merge
         run: |
-          cp scripts/headless/upstream-release.sh "$RUNNER_TEMP/upstream-release.sh"
+          cp utils/headless/upstream-release.sh "$RUNNER_TEMP/upstream-release.sh"
           echo "SYNC_STATE=$RUNNER_TEMP/upstream-prepare" >> "$GITHUB_ENV"
       - name: Detect a stable release not already covered
         id: detect
@@ -79,7 +79,7 @@ jobs:
         run: |
           export SYNC_STATE="$RUNNER_TEMP/upstream-resolution"
           echo "SYNC_STATE=$SYNC_STATE" >> "$GITHUB_ENV"
-          cp scripts/headless/upstream-release.sh "$RUNNER_TEMP/upstream-release.sh"
+          cp utils/headless/upstream-release.sh "$RUNNER_TEMP/upstream-release.sh"
           bash "$RUNNER_TEMP/upstream-release.sh" merge
       - name: Resolve conflicts once with Codex
         timeout-minutes: 15
@@ -148,7 +148,7 @@ jobs:
           export SYNC_STATE="$RUNNER_TEMP/upstream-proposal"
           echo "SYNC_STATE=$SYNC_STATE" >> "$GITHUB_ENV"
           mkdir -p "$SYNC_STATE"
-          cp scripts/headless/upstream-release.sh "$RUNNER_TEMP/upstream-release.sh"
+          cp utils/headless/upstream-release.sh "$RUNNER_TEMP/upstream-release.sh"
           if [[ -d "$RUNNER_TEMP/untrusted-resolution" ]]; then
             cp "$RUNNER_TEMP/untrusted-resolution/resolution.patch" "$SYNC_STATE/"
             cp "$RUNNER_TEMP/untrusted-resolution/codex-summary.md" "$SYNC_STATE/"

@@ -25,7 +25,6 @@ import (
 	"github.com/ProtonMail/proton-bridge/v3/internal/identifier"
 	"github.com/ProtonMail/proton-bridge/v3/internal/logging"
 	smtpservice "github.com/ProtonMail/proton-bridge/v3/internal/services/smtp"
-	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"github.com/sirupsen/logrus"
 )
@@ -57,13 +56,6 @@ func newSMTPServer(accounts *smtpservice.Accounts, settings SMTPSettingsProvider
 	smtpServer.ReadTimeout = 5 * time.Minute
 	smtpServer.WriteTimeout = 5 * time.Minute
 	smtpServer.ErrorLog = logging.NewSMTPLogger()
-
-	// go-smtp suppors SASL PLAIN but not LOGIN. We need to add LOGIN support ourselves.
-	smtpServer.EnableAuth(sasl.Login, func(conn *smtp.Conn) sasl.Server {
-		return sasl.NewLoginServer(func(username, password string) error {
-			return conn.Session().AuthPlain(username, password)
-		})
-	})
 
 	if settings.Log() {
 		logSMTP.Warning("================================================")

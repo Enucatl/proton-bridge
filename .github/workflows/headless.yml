@@ -1,8 +1,12 @@
 name: Headless container CI
 on:
   pull_request:
+    paths-ignore:
+      - '*.md'
   push:
     branches: [main]
+    paths-ignore:
+      - '*.md'
 
 permissions:
   contents: read
@@ -31,11 +35,11 @@ jobs:
           echo "upstream_major=${version%%.*}" >> "$GITHUB_OUTPUT"
           echo "upstream_minor=${version%.*}" >> "$GITHUB_OUTPUT"
       - name: Check stable upstream release synchronization
-        run: ./scripts/headless/upstream-release_test.sh
+        run: ./utils/headless/upstream-release_test.sh
       - name: Format, vet, unit/integration tests, race and reachable Go vulnerabilities
-        run: ./scripts/headless/run.sh check
+        run: ./utils/headless/run.sh check
       - name: Smoke-test Debian nonroot runtime
-        run: ./scripts/headless/smoke.sh
+        run: ./utils/headless/smoke.sh
 
   image:
     needs: check
@@ -53,7 +57,7 @@ jobs:
         type=raw,value=${{ needs.check.outputs.upstream_minor }}
         type=raw,value=${{ needs.check.outputs.upstream_version }}
         type=raw,value=latest
-      dockerfile: scripts/headless/Dockerfile.image
+      dockerfile: Dockerfile
       trivy_skip_dirs: .git,headless-dist
       build_args: REVISION=${{ github.sha }}
       cache: false

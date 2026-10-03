@@ -106,7 +106,11 @@ func TestSMTPSubmissionLimits(t *testing.T) {
 	// Exercise actual DATA byte enforcement with a small payload.
 	server.MaxMessageBytes = 64
 	protocol := dialSMTP(t, server)
-	require.Contains(t, smtpCommand(t, protocol, "EHLO test", 250), "SIZE 64")
+	capabilities := smtpCommand(t, protocol, "EHLO test", 250)
+	require.Contains(t, capabilities, "SIZE 64")
+	require.Contains(t, capabilities, "AUTH PLAIN")
+	require.NotContains(t, capabilities, "LOGIN")
+	smtpCommand(t, protocol, "AUTH LOGIN", 504)
 	smtpCommand(t, protocol, "AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=", 235)
 	smtpCommand(t, protocol, "MAIL FROM:<sender@example.com> SIZE=65", 552)
 	smtpCommand(t, protocol, "MAIL FROM:<sender@example.com>", 250)

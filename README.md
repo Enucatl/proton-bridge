@@ -23,6 +23,7 @@ Proton API security checks.
 - No GUI, desktop IPC, desktop integrations, OS keychain, or FIDO2 dependencies.
 - A vault key file replaces the `pass`/GPG/keychain stack.
 - Operators deploy updates; Bridge does not update itself.
+- SMTP uses PLAIN authentication; outdated LOGIN support was removed [following go-sasl upstream](https://github.com/emersion/go-sasl/issues/19).
 
 ### Improvements
 

@@ -30,3 +30,8 @@ done <<< "$replacements"
 # shellcheck disable=SC2086
 set -- $modules
 go get "$@"
+
+# Resolve new runtime and test imports before the readonly checks.
+# shellcheck disable=SC2086
+set -- $packages
+go list -mod=mod -deps -test "$@" > /dev/null

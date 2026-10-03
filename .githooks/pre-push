@@ -2,4 +2,4 @@
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 # ponytail: scan the working tree; CI checks pushed refs, archive each ref here if needed.
-exec ./scripts/headless/security.sh
+exec ./utils/headless/security.sh

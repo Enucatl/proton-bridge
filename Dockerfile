@@ -9,12 +9,12 @@ WORKDIR /src
 FROM builder AS build
 COPY . .
 ARG REVISION=unknown
-RUN ./scripts/headless/build.sh
+RUN ./utils/headless/build.sh
 
 FROM build AS probe
 RUN go build -mod=readonly -tags=container,netgo,osusergo,sqlite_omit_load_extension \
     -trimpath -buildvcs=false -ldflags '-s -w' \
-    -o headless-dist/runtime-probe ./scripts/headless/probe.go
+    -o headless-dist/runtime-probe ./utils/headless/probe.go
 
 FROM gcr.io/distroless/base-nossl-debian13:nonroot@sha256:8c563c1fb5e120606f0d85733049775faed6192e2bd2223ef283a5393eec22b9 AS debian
 FROM debian AS base

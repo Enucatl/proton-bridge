@@ -106,11 +106,11 @@ build: build-gui
 # Fork binary build and container validation.
 .PHONY: headless-build headless-check headless-smoke
 headless-build:
-	./scripts/headless/run.sh build
+	./utils/headless/run.sh build
 headless-check:
-	./scripts/headless/run.sh check
+	./utils/headless/run.sh check
 headless-smoke:
-	./scripts/headless/smoke.sh
+	./utils/headless/smoke.sh
 
 build-gui: ${TGZ_TARGET}
 

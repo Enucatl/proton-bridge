@@ -2,7 +2,7 @@
 set -euo pipefail
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-script="$(pwd)/scripts/headless/upstream-release.sh"
+script="$(pwd)/utils/headless/upstream-release.sh"
 export REAL_GIT
 REAL_GIT=$(command -v git)
 export MOCK_ROOT="$stage" GITHUB_REPOSITORY=example/fork
@@ -71,16 +71,16 @@ MAKE
     git tag v1.0.0
     git clone -q . "$stage/fork"
     cd "$stage/fork"
-    mkdir -p scripts/headless
-    for target in build check smoke; do touch "scripts/headless/$target.sh"; done
+    mkdir -p utils/headless
+    for target in build check smoke; do touch "utils/headless/$target.sh"; done
     cat >> Makefile <<'MAKE'
 
 headless-build:
-	./scripts/headless/run.sh build
+	./utils/headless/run.sh build
 headless-check:
-	./scripts/headless/run.sh check
+	./utils/headless/run.sh check
 headless-smoke:
-	./scripts/headless/smoke.sh
+	./utils/headless/smoke.sh
 MAKE
     printf 'fork behavior\n' > fork.txt
     if [[ $1 == conflict ]]; then

@@ -33,18 +33,23 @@ case "$*" in
         echo "v0.0.0-candidate $MOCK_HEAD_TIME";;
     'list -m -f {{.Time.Unix}} github.com/ProtonMail/test-fork@v0.0.0-pinned') echo 100;;
     'mod edit -replace=example.com/test-dependency=github.com/ProtonMail/test-fork@v0.0.0-candidate') ;;
-    'get example.com/runtime-dependency@upgrade example.com/test-dependency@upgrade') ;;
+    'get example.com/runtime-dependency@upgrade example.com/test-dependency@upgrade')
+        touch "$MOCK_LOG.upgraded";;
+    'list -mod=mod -deps -test ./cmd/proton-bridge-headless ./internal/bridge')
+        test -f "$MOCK_LOG.upgraded"
+        exit "${MOCK_RESOLVE_STATUS:-0}";;
     *) echo "Unexpected go command: $*" >&2; exit 1;;
 esac
 MOCK
 chmod +x "$stage/bin/go"
 export PATH="$stage/bin:$PATH" MOCK_LOG="$stage/go.log" MOCK_HEAD_TIME=200
-script="$(pwd)/scripts/headless/latest-deps.sh"
+script="$(pwd)/utils/headless/latest-deps.sh"
 cd "$stage"
 
 "$script"
 test "$(grep -c '^mod edit -replace=' "$MOCK_LOG")" -eq 1
 grep -Fx 'get example.com/runtime-dependency@upgrade example.com/test-dependency@upgrade' "$MOCK_LOG" >/dev/null
+test "$(tail -n 1 "$MOCK_LOG")" = 'list -mod=mod -deps -test ./cmd/proton-bridge-headless ./internal/bridge'
 
 for MOCK_HEAD_TIME in 50 100; do
     export MOCK_HEAD_TIME
@@ -63,4 +68,10 @@ for failure in MOCK_QUERY_STATUS MOCK_LIST_STATUS; do
     if grep -q '^get ' "$MOCK_LOG"; then exit 1; fi
     unset "$failure"
 done
+
+# A failed resolution must fail the upgrade too.
+export MOCK_RESOLVE_STATUS=17
+actual=0
+"$script" || actual=$?
+test "$actual" -eq 17
 echo 'Headless dependency upgrade checks passed'

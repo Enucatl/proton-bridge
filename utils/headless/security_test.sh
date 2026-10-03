@@ -3,8 +3,8 @@
 set -euo pipefail
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
-mkdir -p "$stage/scripts/headless" "$stage/bin"
-cp scripts/headless/security.sh "$stage/scripts/headless/"
+mkdir -p "$stage/utils/headless" "$stage/bin"
+cp utils/headless/security.sh "$stage/utils/headless/"
 cat > "$stage/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -19,7 +19,7 @@ for status in 0 42 23; do
     export MOCK_SCAN_STATUS=$status
     : > "$MOCK_LOG"
     actual=0
-    scripts/headless/security.sh || actual=$?
+    utils/headless/security.sh || actual=$?
     test "$actual" -eq "$status"
     grep -F 'aquasec/trivy:0.74.0@sha256:ee940acbf1f58ebadb42d01434ce4609530bf1b52536afbd1eee66cd7123c5c9' "$MOCK_LOG" >/dev/null
     grep -F ' fs --scanners misconfig,secret ' "$MOCK_LOG" >/dev/null

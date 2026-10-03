@@ -27,7 +27,7 @@ chmod 644 "$work/certs/"*.pem
 target=debian
 image="proton-bridge-headless-smoke:$target"
 docker build --platform linux/amd64 --build-arg "REVISION=$(git rev-parse HEAD)" \
-    --target smoke -f scripts/headless/Dockerfile.image -t "$image" .
+    --target smoke -f Dockerfile -t "$image" .
 state="$work/$target"
 mkdir "$state"
 chmod 700 "$state"
