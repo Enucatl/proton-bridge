@@ -20,11 +20,13 @@ package dialer
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/proton-bridge/v3/internal/useragent"
+	"github.com/miekg/dns"
 	r "github.com/stretchr/testify/require"
 )
 
@@ -164,30 +166,51 @@ func DISABLEDTestProxyProviderDoHLookupQuad9Port(t *testing.T) {
 	r.NotEmpty(t, records)
 }
 
-func TestProxyProvider_DoHLookup_Google(t *testing.T) {
-	p := newProxyProvider(NewBasicTLSDialer(""), "", []string{Quad9Provider, GoogleProvider}, async.NoopPanicHandler{})
+func TestProxyProvider_DoHLookup(t *testing.T) {
+	provider := newDoHServer(t, "proxy.example")
+	p := newProxyProvider(NewBasicTLSDialer(""), "", []string{provider.URL}, async.NoopPanicHandler{})
 
-	records, err := p.dohLookup(context.Background(), proxyQuery, GoogleProvider)
+	records, err := p.dohLookup(context.Background(), proxyQuery, provider.URL)
 	r.NoError(t, err)
-	r.NotEmpty(t, records)
+	r.Equal(t, []string{"proxy.example"}, records)
 }
 
 func TestProxyProvider_DoHLookup_FindProxy(t *testing.T) {
-	skipIfProxyIsSet(t)
-
-	p := newProxyProvider(NewBasicTLSDialer(""), "", []string{Quad9Provider, GoogleProvider}, async.NoopPanicHandler{})
+	proxy := getTrustedServer()
+	defer closeServer(proxy)
+	provider := newDoHServer(t, proxy.URL)
+	p := newProxyProvider(NewBasicTLSDialer(""), "", []string{provider.URL}, async.NoopPanicHandler{})
 
 	url, err := p.findReachableServer()
 	r.NoError(t, err)
-	r.NotEmpty(t, url)
+	r.Equal(t, proxy.URL, url)
 }
 
 func TestProxyProvider_DoHLookup_FindProxyFirstProviderUnreachable(t *testing.T) {
-	skipIfProxyIsSet(t)
-
-	p := newProxyProvider(NewBasicTLSDialer(""), "", []string{"https://unreachable", Quad9Provider, GoogleProvider}, async.NoopPanicHandler{})
+	proxy := getTrustedServer()
+	defer closeServer(proxy)
+	provider := newDoHServer(t, proxy.URL)
+	unreachable := newDoHServer(t)
+	unreachable.Close()
+	p := newProxyProvider(NewBasicTLSDialer(""), "", []string{unreachable.URL, provider.URL}, async.NoopPanicHandler{})
 
 	url, err := p.findReachableServer()
 	r.NoError(t, err)
-	r.NotEmpty(t, url)
+	r.Equal(t, proxy.URL, url)
+}
+
+func newDoHServer(t *testing.T, records ...string) *httptest.Server {
+	t.Helper()
+	response := dns.Msg{Answer: []dns.RR{&dns.TXT{
+		Hdr: dns.RR_Header{Name: dns.Fqdn(proxyQuery), Rrtype: dns.TypeTXT, Class: dns.ClassINET},
+		Txt: records,
+	}}}
+	body, err := response.Pack()
+	r.NoError(t, err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/dns-message")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+	return server
 }
