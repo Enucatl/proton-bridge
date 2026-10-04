@@ -2,7 +2,7 @@ FROM golang:1.26.7-trixie@sha256:978084e7adea0904b6d76cbc9afcb9baeed6ee170eecdc8
 
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 ENV GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 CGO_ENABLED=1
-RUN go install golang.org/x/vuln/cmd/govulncheck@v1.1.4 \
+RUN go install golang.org/x/vuln/cmd/govulncheck@v1.8.0 \
     && git config --system --add safe.directory /src
 WORKDIR /src
 
