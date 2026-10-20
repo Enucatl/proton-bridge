@@ -26,14 +26,15 @@ Proton API security checks.
 
 ### Improvements
 
+- Allow post-quantum TLS certificates (ML-DSA).
 - Require implicit TLS for every IMAP and SMTP connection.
 - Reject invalid keys, damaged vaults, and invalid configured certificates without resetting state.
 - Prevent concurrent processes from accessing the same state.
-- Deploy as nonroot with a read-only root filesystem, dropped capabilities
-- Disable automatic telemetry, crash reports, and TLS diagnostic uploads.
+- Deploy as nonroot with a read-only root filesystem, drop all capabilities
+- Disable telemetry, crash reports, and TLS diagnostic uploads.
 - Remove the "funny" `crash@bandicoot` login that lets anyone crash your Bridge over the network without authenticating.
 - Pin build inputs and check dependencies, vulnerabilities, secrets, and runtime behavior.
-- Sync faster thanks to improved concurrency.
+- Sync faster with improved concurrency.
 
 ## Usage
 
