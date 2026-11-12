@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -339,6 +340,9 @@ func (s *Service) run(ctx context.Context, lastEventID string) { //nolint gocycl
 	s.log.Info("Starting IMAP Service")
 	defer s.log.Info("Exiting IMAP Service")
 
+	var rewindTasks sync.WaitGroup
+	defer rewindTasks.Wait()
+
 	defer s.cpc.Close()
 	defer s.eventSubscription.Remove(s.eventWatcher)
 	defer s.syncHandler.Close()
@@ -464,7 +468,7 @@ func (s *Service) run(ctx context.Context, lastEventID string) { //nolint gocycl
 				// was processed during an event publish. This in turn will block the imap service, since the
 				// event service is unable to reply to the request until the events have been processed.
 				s.log.Info("Sync complete, starting API event stream")
-				go func() {
+				rewindTasks.Go(func() {
 					// If context cancelled do not do anything
 					if ctx.Err() != nil {
 						return
@@ -521,7 +525,7 @@ func (s *Service) run(ctx context.Context, lastEventID string) { //nolint gocycl
 						s.log.WithError(err).Error("Failed to clear start sync event id")
 					}
 					s.isSyncing.Store(false)
-				}()
+				})
 			}
 
 		case request, ok := <-s.syncUpdateApplier.requestCh:
