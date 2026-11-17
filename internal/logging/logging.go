@@ -53,11 +53,15 @@ const (
 )
 
 type coloredStdOutHook struct {
+	logger    *logrus.Logger
 	formatter logrus.Formatter
 }
 
 func newColoredStdOutHook() *coloredStdOutHook {
+	logger := logrus.New()
+	logger.SetOutput(os.Stdout)
 	return &coloredStdOutHook{
+		logger: logger,
 		formatter: &logrus.TextFormatter{
 			ForceColors:     true,
 			FullTimestamp:   true,
@@ -76,6 +80,9 @@ func (cs *coloredStdOutHook) Levels() []logrus.Level {
 }
 
 func (cs *coloredStdOutHook) Fire(entry *logrus.Entry) error {
+	// The formatter reads Logger.Out outside the logger lock.
+	entry = entry.Dup()
+	entry.Logger = cs.logger
 	bytes, err := cs.formatter.Format(entry)
 	if err != nil {
 		return err

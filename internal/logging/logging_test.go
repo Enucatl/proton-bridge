@@ -18,8 +18,10 @@
 package logging
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
@@ -102,4 +104,20 @@ func TestLogging_Close(t *testing.T) {
 	logrus.Debug("Test") // because we set max log file size to 1, this will force a rotation of the log file.
 	require.NotNil(t, closer)
 	require.NoError(t, closer.Close())
+}
+
+func TestColoredStdOutHookConcurrentOutputChange(t *testing.T) {
+	logger := logrus.New()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range 1000 {
+			logger.SetOutput(io.Discard)
+		}
+	}()
+	for range 100 {
+		require.NoError(t, newColoredStdOutHook().Fire(logrus.NewEntry(logger)))
+	}
+	wg.Wait()
 }
