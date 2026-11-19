@@ -122,4 +122,29 @@ To allow LAN access, replace `127.0.0.1` in both port mappings with the
 Bridge host's LAN IP address. Mount a certificate that your mail clients
 trust and that covers the hostname they use to connect.
 
+### Use a custom data directory
+
+For a new installation under `/data/bridge`, set these fields under
+`services.bridge`. The existing volume keeps the directory writable, and
+the healthcheck reads the public certificate Bridge exports there.
+
+```yaml
+command: ["--noninteractive", "--vault-key-file", "/run/secrets/bridge_vault_key", "--data-dir", "/data/bridge"]
+healthcheck:
+  test: ["CMD", "/proton-bridge-headless", "--healthcheck", "--data-dir", "/data/bridge"]
+```
+
+Use the same directory when opening the provisioning CLI.
+
+```sh
+docker compose stop bridge
+docker compose run --rm bridge --cli --vault-key-file /run/secrets/bridge_vault_key --data-dir /data/bridge
+```
+
+Wait for Docker to verify both TLS listener greetings with the configured probe.
+
+```sh
+docker compose up -d --wait bridge
+```
+
 Copyright (c) 2026 Proton AG
