@@ -77,6 +77,11 @@ services:
     command: ["--noninteractive", "--vault-key-file", "/run/secrets/bridge_vault_key"]
     restart: unless-stopped
     stop_grace_period: 20s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     read_only: true
     cap_drop:
       - ALL
@@ -106,6 +111,7 @@ secrets:
 
 ```sh
 docker compose up -d
+docker compose logs bridge
 ```
 
 On the Bridge host, connect your mail client to `127.0.0.1`, with IMAP on

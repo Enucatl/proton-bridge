@@ -141,11 +141,15 @@ func runContainer(c *cli.Context) error {
 		return err
 	}
 	sessionID := logging.NewSessionID()
-	closer, err := logging.Init(logs, sessionID, logging.BridgeShortAppName, logging.DefaultMaxLogFileSize, logging.DefaultPruningSize, c.String("log-level"))
-	if err != nil {
+	if c.Bool("cli") {
+		closer, err := logging.Init(logs, sessionID, logging.BridgeShortAppName, logging.DefaultMaxLogFileSize, logging.DefaultPruningSize, c.String("log-level"))
+		if err != nil {
+			return err
+		}
+		defer func() { _ = logging.Close(closer) }()
+	} else if err := logging.InitStderr(c.String("log-level")); err != nil {
 		return err
 	}
-	defer func() { _ = logging.Close(closer) }()
 	crashHandler.AddRecoveryAction(logging.DumpStackTrace(logs, sessionID, "bridge"))
 	settings, err := loc.ProvideSettingsPath()
 	if err != nil {

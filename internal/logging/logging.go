@@ -95,9 +95,7 @@ func (cs *coloredStdOutHook) Fire(entry *logrus.Entry) error {
 	return nil
 }
 
-// Init Initialize logging. Log files are rotated when their size exceeds rotationSize. if pruningSize >= 0, pruning occurs using
-// the default pruning algorithm.
-func Init(logsPath string, sessionID SessionID, appName AppName, rotationSize, pruningSize int64, level string) (io.Closer, error) {
+func setDefaultFormatter() {
 	logrus.SetFormatter(&logrus.TextFormatter{
 		DisableColors:    true,
 		ForceQuote:       true,
@@ -105,7 +103,12 @@ func Init(logsPath string, sessionID SessionID, appName AppName, rotationSize, p
 		QuoteEmptyFields: true,
 		TimestampFormat:  "2006-01-02 15:04:05.000",
 	})
+}
 
+// Init Initialize logging. Log files are rotated when their size exceeds rotationSize. if pruningSize >= 0, pruning occurs using
+// the default pruning algorithm.
+func Init(logsPath string, sessionID SessionID, appName AppName, rotationSize, pruningSize int64, level string) (io.Closer, error) {
+	setDefaultFormatter()
 	logrus.AddHook(newColoredStdOutHook())
 
 	rotator, err := NewDefaultRotator(logsPath, sessionID, appName, rotationSize, pruningSize)
@@ -116,6 +119,13 @@ func Init(logsPath string, sessionID SessionID, appName AppName, rotationSize, p
 	logrus.SetOutput(rotator)
 
 	return rotator, setLevel(level)
+}
+
+// InitStderr sends logs to the process's standard error stream.
+func InitStderr(level string) error {
+	logrus.SetOutput(os.Stderr)
+	setDefaultFormatter()
+	return setLevel(level)
 }
 
 // Close closes the log file. if closer is nil, no error is reported.
