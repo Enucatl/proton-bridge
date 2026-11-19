@@ -18,6 +18,8 @@ gobinsec-cache*.yml
 # Run files
 mem.pprof
 *.pprof
+/secrets/
+/certs/
 
 # Auto generated
 internal/**/credits.go
