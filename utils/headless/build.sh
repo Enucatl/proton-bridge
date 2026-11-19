@@ -3,7 +3,7 @@ set -eu
 UPSTREAM_VERSION=$(sed -n 's/^BRIDGE_APP_VERSION?=\([0-9.]*\)+git$/\1/p' Makefile)
 : "${REVISION:=$(git rev-parse HEAD)}"
 : "${HEADLESS_VERSION:=v${UPSTREAM_VERSION}-dev-$(printf '%.12s' "$REVISION")}"
-: "${SOURCE_DATE_EPOCH:=$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
+SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
 export GOOS=linux GOARCH=amd64 CGO_ENABLED=1 GOTOOLCHAIN=local
 export GOFLAGS='-mod=readonly -tags=container,netgo,osusergo,sqlite_omit_load_extension'
 mkdir -p headless-dist

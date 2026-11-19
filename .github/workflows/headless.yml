@@ -18,27 +18,32 @@ concurrency:
 jobs:
   check:
     outputs:
-      upstream_version: ${{ steps.version.outputs.upstream_version }}
-      upstream_major: ${{ steps.version.outputs.upstream_major }}
-      upstream_minor: ${{ steps.version.outputs.upstream_minor }}
+      upstream_version: ${{ steps.release.outputs.upstream_version }}
+      candidate_tag: ${{ steps.release.outputs.candidate_tag }}
+      source_date_epoch: ${{ steps.release.outputs.source_date_epoch }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: false
-      - name: Read upstream version
-        id: version
+      - name: Read candidate build metadata
+        id: release
         run: |
           version=$(sed -n 's/^BRIDGE_APP_VERSION?=\([0-9.]*\)+git$/\1/p' Makefile)
-          echo "upstream_version=$version" >> "$GITHUB_OUTPUT"
-          echo "upstream_major=${version%%.*}" >> "$GITHUB_OUTPUT"
-          echo "upstream_minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          source_date_epoch=$(git log -1 --format=%ct)
+          {
+            echo "upstream_version=$version"
+            echo "candidate_tag=candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            echo "source_date_epoch=$source_date_epoch"
+          } >> "$GITHUB_OUTPUT"
       - name: Check stable upstream release synchronization
         run: ./utils/headless/upstream-release_test.sh
       - name: Format, vet, unit/integration tests, race and reachable Go vulnerabilities
         run: ./utils/headless/run.sh check
       - name: Smoke-test Debian nonroot runtime
+        if: github.event_name != 'push' || github.repository != 'Enucatl/proton-bridge'
         run: ./utils/headless/smoke.sh
 
   image:
@@ -51,16 +56,61 @@ jobs:
     uses: Enucatl/docker-compose-security-baseline/.github/workflows/docker-ci.yml@cb856ab2d543c350e1e3ec6723d587a53a007a70
     with:
       image_name: ghcr.io/enucatl/proton-bridge
-      version: ${{ needs.check.outputs.upstream_version }}
-      meta_tags: |
-        type=raw,value=${{ needs.check.outputs.upstream_major }}
-        type=raw,value=${{ needs.check.outputs.upstream_minor }}
-        type=raw,value=${{ needs.check.outputs.upstream_version }}
-        type=raw,value=latest
+      version: ${{ needs.check.outputs.candidate_tag }}
+      meta_tags: type=raw,value=${{ needs.check.outputs.candidate_tag }}
       dockerfile: Dockerfile
       trivy_skip_dirs: .git,headless-dist
-      build_args: REVISION=${{ github.sha }}
+      build_args: |
+        REVISION=${{ github.sha }}
+        SOURCE_DATE_EPOCH=${{ needs.check.outputs.source_date_epoch }}
       cache: false
       push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Enucatl/proton-bridge' }}
     secrets:
       registry_token: ${{ secrets.GITHUB_TOKEN }}
+
+  promote:
+    needs: [check, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Enucatl/proton-bridge'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/enucatl/proton-bridge
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Log in to GHCR
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: echo "$REGISTRY_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Resolve the scanned candidate digest
+        id: candidate
+        env:
+          CANDIDATE_TAG: ${{ needs.check.outputs.candidate_tag }}
+        run: |
+          digest=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE:$CANDIDATE_TAG")
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Smoke-test the release candidate by digest
+        env:
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+        run: ./utils/headless/smoke.sh "$IMAGE@$DIGEST"
+      - name: Promote and verify release tags
+        env:
+          DIGEST: ${{ steps.candidate.outputs.digest }}
+          VERSION: ${{ needs.check.outputs.upstream_version }}
+        run: |
+          tags=("${VERSION%%.*}" "${VERSION%.*}" "$VERSION" latest)
+          options=()
+          for tag in "${tags[@]}"; do options+=(--tag "$IMAGE:$tag"); done
+          docker buildx imagetools create --prefer-index=false "${options[@]}" "$IMAGE@$DIGEST"
+          for tag in "${tags[@]}"; do
+            actual=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE:$tag")
+            if [[ "$actual" != "$DIGEST" ]]; then
+              echo "$IMAGE:$tag resolves to $actual, expected $DIGEST" >&2
+              exit 1
+            fi
+          done

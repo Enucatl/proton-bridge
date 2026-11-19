@@ -1,6 +1,5 @@
 FROM golang:1.27.4-trixie@sha256:c47c3fda018d13d43a6bf5ebac3e5bba8a23a35782aa4faf531afaf47c64c39f AS builder
 
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 ENV GOTOOLCHAIN=local GOOS=linux GOARCH=amd64 CGO_ENABLED=1
 RUN go install golang.org/x/vuln/cmd/govulncheck@v1.8.0 \
     && git config --system --add safe.directory /src
@@ -9,15 +8,17 @@ WORKDIR /src
 FROM builder AS build
 COPY . .
 ARG REVISION=unknown
+ARG SOURCE_DATE_EPOCH=0
 RUN ./utils/headless/build.sh
 
-FROM build AS probe
+FROM builder AS probe
+COPY . .
 RUN go build -mod=readonly -tags=container,netgo,osusergo,sqlite_omit_load_extension \
     -trimpath -buildvcs=false -ldflags '-s -w' \
     -o headless-dist/runtime-probe ./utils/headless/probe.go
 
 FROM gcr.io/distroless/base-nossl-debian13:nonroot@sha256:8c563c1fb5e120606f0d85733049775faed6192e2bd2223ef283a5393eec22b9 AS debian
-FROM debian AS base
+FROM debian AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/Enucatl/proton-bridge"
 
@@ -36,8 +37,3 @@ HEALTHCHECK --interval=30s --timeout=15s --start-period=30s --retries=3 \
 
 ENTRYPOINT ["/proton-bridge-headless"]
 CMD ["--noninteractive"]
-
-FROM base AS smoke
-COPY --from=probe /src/headless-dist/runtime-probe /runtime-probe
-
-FROM base AS runtime

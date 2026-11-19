@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
+image=${1:-}
+if [[ -n "$image" && ! "$image" =~ @sha256:[0-9a-f]{64}$ ]]; then
+    echo 'Pass a digest-qualified runtime image reference' >&2
+    exit 1
+fi
 work=$(mktemp -d)
+probe_image=proton-bridge-headless-probe
 containers=()
 cleanup() {
     for name in "${containers[@]}"; do docker rm -f "$name" >/dev/null 2>&1 || true; done
-    docker run --rm --userns=host --user 0:0 -v "$work:/work" proton-bridge-headless-builder chown -R "$(id -u):$(id -g)" /work >/dev/null 2>&1 || true
+    docker run --rm --userns=host --user 0:0 -v "$work:/work" "$probe_image" chown -R "$(id -u):$(id -g)" /work >/dev/null 2>&1 || true
     rm -rf "$work"
 }
 trap cleanup EXIT
@@ -25,17 +31,25 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
     -keyout "$work/certs/key.pem" -out "$work/certs/cert.pem" >/dev/null 2>&1
 chmod 644 "$work/certs/"*.pem
 target=debian
-image="proton-bridge-headless-smoke:$target"
-docker build --platform linux/amd64 --build-arg "REVISION=$(git rev-parse HEAD)" \
-    --target smoke -f Dockerfile -t "$image" .
+if [[ -n "$image" ]]; then
+    docker pull --platform linux/amd64 "$image"
+else
+    image="proton-bridge-headless-smoke:$target"
+    docker build --platform linux/amd64 --build-arg "REVISION=$(git rev-parse HEAD)" \
+        --build-arg "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" \
+        --target runtime -t "$image" .
+fi
+docker build --platform linux/amd64 --target probe -t "$probe_image" .
+docker run --rm --userns=host "$probe_image" cat /src/headless-dist/runtime-probe > "$work/runtime-probe"
+chmod 755 "$work/runtime-probe"
 state="$work/$target"
 mkdir "$state"
 chmod 700 "$state"
 # Numeric nonroot identity stays explicit even when a base supplies another UID.
-docker run --rm --userns=host --user 0:0 -v "$state:/state" proton-bridge-headless-builder chown 1000:1000 /state
+docker run --rm --userns=host --user 0:0 -v "$state:/state" "$probe_image" chown 1000:1000 /state
 options=(--userns=host --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000
     --tmpfs '/tmp:rw,noexec,nosuid,uid=1000,gid=1000,mode=700'
-    -v "$state:/data" -v "$work/certs:/protonmail/certs:ro")
+    -v "$state:/data" -v "$work/certs:/protonmail/certs:ro" -v "$work/runtime-probe:/runtime-probe:ro")
 docker run --rm "${options[@]}" --entrypoint /runtime-probe "$image" runtime
 docker run --rm "${options[@]}" "$image" --version
 name="headless-smoke-${target}-$$"
@@ -58,9 +72,10 @@ docker rm "$name" >/dev/null
 # Default self-signed identity persists in the vault and needs no custom mount.
 fallback_state="$work/fallback-$target"
 mkdir -m 700 "$fallback_state"
-docker run --rm --userns=host --user 0:0 -v "$fallback_state:/state" proton-bridge-headless-builder chown 1000:1000 /state
+docker run --rm --userns=host --user 0:0 -v "$fallback_state:/state" "$probe_image" chown 1000:1000 /state
 fallback_options=(--userns=host --read-only --cap-drop ALL --security-opt no-new-privileges --user 1000:1000
-    --tmpfs '/tmp:rw,noexec,nosuid,uid=1000,gid=1000,mode=700' -v "$fallback_state:/data")
+    --tmpfs '/tmp:rw,noexec,nosuid,uid=1000,gid=1000,mode=700'
+    -v "$fallback_state:/data" -v "$work/runtime-probe:/runtime-probe:ro")
 name="headless-fallback-${target}-$$"
 containers+=("$name")
 docker run -d --name "$name" "${fallback_options[@]}" "$image" --noninteractive >/dev/null
