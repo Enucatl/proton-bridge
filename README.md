@@ -83,8 +83,8 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "10243:1143"
-      - "10125:1025"
+      - "127.0.0.1:10243:1143"
+      - "127.0.0.1:10125:1025"
     volumes:
       - bridge_data:/data
       # Optional: mount existing certificates, readable by the mapped container UID.
@@ -108,9 +108,12 @@ secrets:
 docker compose up -d
 ```
 
-Connect your mail client to the Bridge host, with IMAP on `10243` and SMTP on
-`10125`, using **SSL/TLS** and the credentials from `info 0`. Use a hostname
-covered by your mounted certificate. For the default self-signed certificate,
-connect to `127.0.0.1` and trust it in your mail client.
+On the Bridge host, connect your mail client to `127.0.0.1`, with IMAP on
+`10243` and SMTP on `10125`, using **SSL/TLS** and the credentials from
+`info 0`. Trust the default self-signed certificate in your mail client.
+
+To allow LAN access, replace `127.0.0.1` in both port mappings with the
+Bridge host's LAN IP address. Mount a certificate that your mail clients
+trust and that covers the hostname they use to connect.
 
 Copyright (c) 2026 Proton AG
