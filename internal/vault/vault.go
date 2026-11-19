@@ -422,13 +422,22 @@ func (vault *Vault) modSafe(fn func(data *Data)) error {
 }
 
 func (vault *Vault) modUnsafe(fn func(data *Data)) error {
+	return vault.modUnsafeIf(func(data *Data) bool {
+		fn(data)
+		return true
+	})
+}
+
+func (vault *Vault) modUnsafeIf(fn func(data *Data) bool) error {
 	var data Data
 
 	if err := unmarshalFile(vault.gcm, vault.enc, &data); err != nil {
 		return err
 	}
 
-	fn(&data)
+	if !fn(&data) {
+		return nil
+	}
 
 	enc, err := marshalFile(vault.gcm, data)
 	if err != nil {

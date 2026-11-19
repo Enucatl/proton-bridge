@@ -172,18 +172,8 @@ func runContainer(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	// Serialized desktop preferences stay compatible; the service policy is fixed.
-	for _, set := range []func() error{
-		func() error { return v.SetBridgeTLSCertPath(certPath, keyPath) },
-		func() error { return v.SetIMAPPort(1143) },
-		func() error { return v.SetSMTPPort(1025) },
-		func() error { return v.SetIMAPSSL(true) },
-		func() error { return v.SetSMTPSSL(true) },
-		func() error { return v.SetAutoUpdate(false) },
-	} {
-		if err := set(); err != nil {
-			return err
-		}
+	if err := v.ApplyContainerPolicy(certPath, keyPath); err != nil {
+		return err
 	}
 	certPEM, keyPEM := v.GetBridgeTLSCert()
 	pair, err := tls.X509KeyPair(certPEM, keyPEM)

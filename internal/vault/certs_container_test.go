@@ -111,3 +111,42 @@ func TestContainerConfiguredCertHasNoFallback(t *testing.T) {
 	require.Equal(t, fallbackKey, key)
 	require.NoError(t, v.Close())
 }
+
+func TestContainerPolicyPersistsAndSkipsIdenticalWrites(t *testing.T) {
+	dir, cache, vaultKey := t.TempDir(), t.TempDir(), []byte("test key")
+	v, corrupt, err := New(dir, cache, vaultKey, async.NoopPanicHandler{})
+	require.NoError(t, err)
+	require.NoError(t, corrupt)
+	require.NoError(t, v.SetIMAPPort(2143))
+	require.NoError(t, v.SetSMTPPort(2025))
+
+	pair := newTLSCert()
+	pemDir := t.TempDir()
+	certPath, keyPath := filepath.Join(pemDir, "cert.pem"), filepath.Join(pemDir, "key.pem")
+	require.NoError(t, os.WriteFile(certPath, pair.Cert, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, pair.Key, 0o600))
+	require.NoError(t, v.ApplyContainerPolicy(certPath, keyPath))
+	require.NoError(t, v.Close())
+
+	v, corrupt, err = New(dir, cache, vaultKey, async.NoopPanicHandler{})
+	require.NoError(t, err)
+	require.NoError(t, corrupt)
+	data := v.getSafe()
+	require.Equal(t, 1143, data.Settings.IMAPPort)
+	require.Equal(t, 1025, data.Settings.SMTPPort)
+	require.True(t, data.Settings.IMAPSSL)
+	require.True(t, data.Settings.SMTPSSL)
+	require.False(t, data.Settings.AutoUpdate)
+	require.Equal(t, certPath, data.Certs.CustomCertPath)
+	require.Equal(t, keyPath, data.Certs.CustomKeyPath)
+
+	original, err := os.ReadFile(v.Path())
+	require.NoError(t, err)
+	require.NoError(t, v.ApplyContainerPolicy(certPath, keyPath))
+	require.NoError(t, os.Remove(certPath))
+	require.Error(t, v.ApplyContainerPolicy(certPath, keyPath))
+	current, err := os.ReadFile(v.Path())
+	require.NoError(t, err)
+	require.Equal(t, original, current)
+	require.NoError(t, v.Close())
+}
