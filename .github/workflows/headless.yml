@@ -48,7 +48,7 @@ jobs:
       packages: write
       id-token: write
       security-events: write
-    uses: Enucatl/docker-compose-security-baseline/.github/workflows/docker-ci.yml@main
+    uses: Enucatl/docker-compose-security-baseline/.github/workflows/docker-ci.yml@cb856ab2d543c350e1e3ec6723d587a53a007a70
     with:
       image_name: ghcr.io/enucatl/proton-bridge
       version: ${{ needs.check.outputs.upstream_version }}
