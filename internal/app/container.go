@@ -20,6 +20,7 @@
 package app
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/pem"
 	"errors"
@@ -33,6 +34,7 @@ import (
 	"syscall"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/ProtonMail/gluon/async"
 	"github.com/ProtonMail/proton-bridge/v3/internal/bridge"
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
 	"github.com/ProtonMail/proton-bridge/v3/internal/cookies"
@@ -222,7 +224,7 @@ func runContainer(c *cli.Context) error {
 			if c.Bool("cli") && ctx.Err() == nil {
 				frontendErr = bridgeCLI.New(b, restarter.New(""), eventCh, crashHandler, ctx.Done()).Loop()
 			} else {
-				<-ctx.Done()
+				drainContainerEvents(ctx, eventCh)
 			}
 			select {
 			case err := <-panicErr:
@@ -232,6 +234,11 @@ func runContainer(c *cli.Context) error {
 			}
 		})
 	})
+}
+
+func drainContainerEvents(ctx context.Context, eventCh <-chan events.Event) {
+	// Bridge subscribes to frontend events even when the daemon has no frontend.
+	async.RangeContext(ctx, eventCh, func(events.Event) {})
 }
 
 // Default mount paths are optional; an explicit or partially present pair must validate.

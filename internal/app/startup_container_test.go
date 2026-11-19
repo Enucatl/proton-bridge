@@ -29,12 +29,40 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ProtonMail/proton-bridge/v3/internal/constants"
+	"github.com/ProtonMail/proton-bridge/v3/internal/events"
 	"github.com/ProtonMail/proton-bridge/v3/internal/locations"
 	"github.com/allan-simon/go-singleinstance"
 	"github.com/urfave/cli/v2"
 )
+
+func TestContainerDaemonDrainsBridgeEvents(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	eventCh := make(chan events.Event)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		drainContainerEvents(ctx, eventCh)
+	}()
+
+	for range 1000 {
+		select {
+		case eventCh <- events.IMAPLoginFailed{}:
+		case <-ctx.Done():
+			t.Fatal("daemon stopped consuming IMAP events")
+		}
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("daemon did not stop after cancellation")
+	}
+}
 
 func TestContainerStartupRefusesMissingCertificate(t *testing.T) {
 	data := filepath.Join(t.TempDir(), "uncreated")
